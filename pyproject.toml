@@ -1,0 +1,7 @@
+[project]
+name = "wav2aug"
+version = "0.1.0"
+description = "A general speech aumgentation policy."
+readme = "readme.md"
+requires-python = ">=3.10"
+dependencies = []
