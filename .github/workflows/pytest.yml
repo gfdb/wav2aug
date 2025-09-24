@@ -1,0 +1,21 @@
+name: CI
+on:
+  pull_request: { branches: [ main ] }
+  push: { branches: [ main ] }
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - uses: astral-sh/setup-uv@v4
+      - run: uv python install 3.10
+      - run: uv sync --all-extras --dev
+      - run: uv run pytest -q tests --maxfail=1 --disable-warnings
+
