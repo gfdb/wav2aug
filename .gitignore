@@ -1,5 +1,4 @@
 # uv / envs / builds
-uv.lock
 .venv/
 dist/
 build/
