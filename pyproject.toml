@@ -1,7 +1,29 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "wav2aug"
 version = "0.1.0"
-description = "A general speech aumgentation policy."
+description = "A general speech augmentation policy."
 readme = "readme.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "torch>=2.8.0",
+    "numpy>=2.2.6",
+    "torchcodec>=0.7.0",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8",
+  "pytest-cov",
+]
+
+
+[tool.setuptools]
+include-package-data = true
+packages = { find = { where = ["."], include = ["wav2aug*"], exclude = ["tests*"], namespaces = true } }
+
+[tool.setuptools.package-data]
+wav2aug = ["py.typed", "**/*.yaml", "assets/**"]
