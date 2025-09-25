@@ -1,8 +1,8 @@
-# wav2aug
+# Wav2Aug: Toward Universal Time-Domain Speech Augmentation 
 
-![Diagram](wav2aug.png)
+A minimalistic PyTorch-based audio augmentation library for speech and audio processing. The goal of this library is to provide a general purpose speech augmentation policy that can be used on any task and perform well without having to tune augmentation hyperparameters. Just install, and start augmenting. Applies two random augmentations per call.
 
-A minimalistic PyTorch-based audio augmentation library for speech and audio processing. Applies two random augmentations per call with support for variable length waveforms and channel counts.
+![Diagram](https://raw.githubusercontent.com/gfdb/wav2aug/main/wav2aug.png)
 
 ## Features
 
@@ -12,9 +12,14 @@ A minimalistic PyTorch-based audio augmentation library for speech and audio pro
 
 ## Installation
 
+### pip
 ```bash
-pip install torch
-pip install torchcodec
+pip install wav2aug
+```
+
+### uv
+```bash
+uv add wav2aug
 ```
 
 ## Quick Start
@@ -41,3 +46,19 @@ augmented = aug(waveform)
 - **Speed Perturbation**: Time-scale modification
 - **Time Dropout**: Random silence insertion
 - **Babble Noise**: Multi-speaker background (auto-enabled with sufficient buffer)
+
+## Development Installation
+
+```bash
+git clone https://github.com/gfdb/wav2aug
+cd wav2aug
+uv python pin 3.10 # or greater
+uv sync
+uv sync --extra test # for test deps
+```
+
+## Tests
+
+```bash
+uv run pytest tests/
+```
