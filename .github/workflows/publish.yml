@@ -1,0 +1,52 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to publish to'
+        required: true
+        default: 'testpypi'
+        type: choice
+        options:
+        - testpypi
+        - pypi
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: 
+      name: ${{ github.event_name == 'release' && 'pypi' || github.event.inputs.environment }}
+      url: ${{ github.event_name == 'release' && 'https://pypi.org/p/wav2aug' || 'https://test.pypi.org/p/wav2aug' }}
+    permissions:
+      id-token: write
+      contents: read
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to Test PyPI
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'testpypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          verbose: true
+
+      - name: Publish to PyPI
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pypi')
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          verbose: true
