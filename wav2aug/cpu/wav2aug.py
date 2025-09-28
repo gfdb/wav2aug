@@ -1,39 +1,44 @@
-import random
-from typing import Callable, List, Optional
-
+from typing import Callable, List
+from multiprocessing import Value, Lock
 import torch
 import torch.nn.functional as F
 
 from wav2aug.cpu import (add_babble_noise, add_noise, chunk_swap, freq_drop,
                          invert_polarity, rand_amp_clip, rand_amp_scale,
                          speed_perturb, time_drop)
-from wav2aug.cpu._aug_utils import _match_channels
 
 
 class Wav2Aug:
-    """Applies two random augmentation to input waveform per call.
+    """Applies two random augmentations to each waveform, each batch will only see two 
+    types of augmentations. Thread safe.
 
     Args:
         sample_rate (int): Sample rate in Hz (e.g., 16000, 44100).
-        buffer_capacity (int): Number of waveforms summed for babble noise.
-            Default: 16.
+        batch_size (int): Number of waveforms per batch. When this many
+            waveforms have been processed, new augmentations are sampled.
 
     """
-
-    def __init__(
-        self, 
-        sample_rate: int,
-        *, 
-        buffer_capacity: int = 16, 
-    ):
+    def __init__(self, sample_rate: int, batch_size: int):
         self.sample_rate = int(sample_rate)
-        self.buffer_capacity = int(buffer_capacity)
+        self.batch_size = int(batch_size)
+        if self.batch_size <= 0:
+            raise ValueError("batch_size must be a positive integer")
         
-        self._active_buffer: Optional[torch.Tensor] = None
-        self._ready_buffer: Optional[torch.Tensor] = None
-        self._active_count: int = 0
-        self._C: Optional[int] = None
+        # shared state for multi-worker coordination 
+        # ensures consistent augmentations across processes
+        self._batch_count = Value('i', 0)  
+        self._op1_idx = Value('i', -1)
+        self._op2_idx = Value('i', -1)
         
+        # babble noise buffers, shared across processes
+        self._current_buffer = None
+        self._ready_buffer = None
+        self._channels = Value('i', -1)
+        
+        # for shared state updates
+        self._lock = Lock()
+
+        # base operations (babble noise added later after first batch)
         self._base_ops: List[Callable] = [
             lambda x: add_noise(x, self.sample_rate),
             lambda x: chunk_swap(x),
@@ -44,18 +49,94 @@ class Wav2Aug:
             lambda x: speed_perturb(x),
             lambda x: time_drop(x, self.sample_rate),
         ]
+        self._base_ops_count = len(self._base_ops)
+
+    def _update_babble_buffers(self, x: torch.Tensor) -> None:
+        """Update babble noise buffers with current waveform.
+        
+        Args:
+            x: Waveform in [C, T] format
+
+        Note: This method assumes the caller already holds self._lock.
+        """
+        # set channels from first waveform
+        if self._channels.value == -1:
+            self._channels.value = x.size(0)
+        
+        # match channels for consistency
+        target_channels = self._channels.value
+        if x.size(0) == target_channels:
+            x_matched = x
+        elif x.size(0) == 1 and target_channels > 1:
+            # mono -> multi-channel: duplicate across channels
+            x_matched = x.repeat(target_channels, 1)
+        else:
+            # multi-channel -> mono or different channel count, average then repeat
+            x_matched = x.mean(dim=0, keepdim=True).repeat(target_channels, 1)
+        
+        if self._current_buffer is None:
+            # initialize current buffer with first waveform
+            self._current_buffer = x_matched.clone()
+        else:
+            # add to current buffer, extending to longest duration
+            current_len = self._current_buffer.size(1)
+            new_len = x_matched.size(1)
+            
+            if new_len > current_len:
+                # new waveform is longer, extend current buffer
+                self._current_buffer = F.pad(self._current_buffer, (0, new_len - current_len))
+                self._current_buffer.add_(x_matched)
+            elif current_len > new_len:
+                # current buffer is longer, pad new waveform and add
+                x_padded = F.pad(x_matched, (0, current_len - new_len))
+                self._current_buffer.add_(x_padded)
+            else:
+                # same length, direct addition
+                self._current_buffer.add_(x_matched)
+    
+    def _complete_batch(self) -> None:
+        """Complete current batch by moving buffers and enabling babble noise if needed.
+        
+        Note: This method assumes the caller already holds self._lock.
+        """
+        if self._current_buffer is not None:
+            # move current buffer to ready buffer for next batch
+            self._ready_buffer = self._current_buffer.clone()
+            self._current_buffer = None
+            
+            # enable babble noise if not already available
+            if len(self._base_ops) == self._base_ops_count:
+                ready_buffer_ref = self._ready_buffer
+                self._base_ops.append(
+                    lambda x, buf=ready_buffer_ref: add_babble_noise(x, buf.clone())
+                )
+
+    def _sample_new_ops(self) -> None:
+        """Sample new operations and update shared state.
+        
+        Note: This method assumes the caller already holds self._lock.
+        """
+        num_ops = len(self._base_ops)
+
+        if num_ops < 2:
+            raise RuntimeError("The number of operations in the pool must be at least 2," \
+            "_base_ops was likely modified.")
+        
+        perm = torch.randperm(num_ops)
+        
+        self._op1_idx.value = int(perm[0])
+        self._op2_idx.value = int(perm[1])
 
     @torch.no_grad()
     def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
-        """Apply two random augmentations to the waveform.
+        """Apply two augmentations to the waveform.
         
         Args:
             waveform: Input audio tensor [T] or [C, T], must be on CPU
-            
+    
         Returns:
             Augmented waveform with same shape as input
         """
-
         x = waveform
         assert x.ndim in (1, 2), "expected [T] or [C, T]"
 
@@ -64,65 +145,28 @@ class Wav2Aug:
 
         x = x.view(1, -1) if x.ndim == 1 else x
 
-        # set channel count from first waveform
-        if self._C is None:
-            self._C = int(x.size(0))
-        
-        # match channels for variable channel datasets before buffer storage
-        x_for_buffer = _match_channels(x, self._C)
-        self._update_buffers(x_for_buffer)
-
-        if len(self._base_ops) < 2:
-            # in practice this should never happen
-            return x
+        # update batch count and handle babble noise buffers
+        with self._lock:
+            count = self._batch_count.value
             
-        op1, op2 = random.sample(self._base_ops, 2)
+            # update buffers for babble noise
+            self._update_babble_buffers(x)
+            
+            if count == 0:
+                self._sample_new_ops()
+                
+            self._batch_count.value = (count + 1) % self.batch_size
+            
+            if self._batch_count.value == 0:
+                self._complete_batch()
+            
+            if self._op1_idx.value <= 0 or self._op2_idx.value <= 0:
+                raise RuntimeError("Augmentation operations have not been initialized.")
+
+            op1 = self._base_ops[self._op1_idx.value]
+            op2 = self._base_ops[self._op2_idx.value]
+
         y = op1(x)
-        return op2(y)
-
-    @torch.no_grad()
-    def _update_buffers(self, waveform_ct: torch.Tensor) -> None:
-        """Update the dual buffer system with a new waveform.
+        result = op2(y)
         
-        The dual-buffer system works as follows:
-        1. Accumulate waveforms in the active buffer until buffer_capacity is reached
-        2. When full, the active buffer becomes the ready buffer (available for babble noise)
-        3. A new active buffer is initialized with the next waveform
-        
-        Buffers automatically grow to accommodate the longest waveform seen in the dataset.
-        Shorter waveforms are zero-padded to match the current buffer length to maintain
-        consistent tensor shapes for accumulation.
-        
-        Args:
-            waveform_ct: Waveform in [C, T] format with channels already matched via _match_channels.
-        """
-        if self._active_buffer is None:
-            # Initialize buffer with first waveform
-            self._active_buffer = waveform_ct.clone()
-            self._active_count = 1
-        else:
-            # Handle length differences by padding to max length
-            buffer_len = self._active_buffer.shape[1]
-            waveform_len = waveform_ct.shape[1]
-            max_len = max(buffer_len, waveform_len)
-            
-            # Pad buffer if needed
-            if buffer_len < max_len:
-                self._active_buffer = F.pad(self._active_buffer, (0, max_len - buffer_len))
-            
-            # Pad incoming waveform if needed
-            if waveform_len < max_len:
-                waveform_ct = F.pad(waveform_ct, (0, max_len - waveform_len))
-            
-            self._active_buffer.add_(waveform_ct)
-            self._active_count += 1
-
-        if self._active_count >= self.buffer_capacity:
-            self._ready_buffer = self._active_buffer
-            # add babble noise to ops once ready buffer is available
-            if len(self._base_ops) == 8:
-                self._base_ops.append(
-                    lambda x: add_babble_noise(x, self._ready_buffer.clone())
-                )
-            self._active_buffer = None  # will be reinitialized with next waveform
-            self._active_count = 0
+        return result.squeeze(0) if waveform.ndim == 1 else result
