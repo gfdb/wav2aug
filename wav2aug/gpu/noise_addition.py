@@ -1,0 +1,111 @@
+from __future__ import annotations
+
+import torch
+
+from wav2aug.cpu._noise_addition import _sample_noise_like
+
+_EPS = 1e-14
+
+
+def _mix_noise(
+    waveforms: torch.Tensor,
+    noise: torch.Tensor,
+    *,
+    snr_low: float,
+    snr_high: float,
+) -> torch.Tensor:
+    if waveforms.ndim != 2 or noise.ndim != 2:
+        raise AssertionError("expected waveforms and noise shaped [batch, time]")
+    if waveforms.shape != noise.shape:
+        raise AssertionError("waveforms and noise must have identical shapes")
+    if waveforms.device.type != "cuda" or noise.device.type != "cuda":
+        raise AssertionError("noise mixing expects CUDA tensors")
+
+    if waveforms.numel() == 0:
+        return waveforms
+
+    device = waveforms.device
+    dtype = waveforms.dtype
+    snr = torch.rand((), device=device, dtype=dtype)
+    snr = snr * (snr_high - snr_low) + snr_low
+
+    pow10 = torch.pow(torch.tensor(10.0, device=device, dtype=dtype), snr / 20.0)
+    factor = 1.0 / (pow10 + 1.0)
+
+    signal_rms = waveforms.pow(2).mean(dim=1, keepdim=True).sqrt().clamp_min(_EPS)
+    noise_rms = noise.pow(2).mean(dim=1, keepdim=True).sqrt().clamp_min(_EPS)
+
+    waveforms.mul_(1.0 - factor)
+    waveforms.add_(noise * (factor * signal_rms / noise_rms))
+    return waveforms
+
+
+@torch.no_grad()
+def add_noise(
+    waveforms: torch.Tensor,
+    sample_rate: int,
+    *,
+    snr_low: float = 0.0,
+    snr_high: float = 10.0,
+    noise_dir: str | None = None,
+    download: bool = True,
+    pack: str = "pointsource_noises",
+) -> torch.Tensor:
+    """Add point-source noise to each waveform in the batch."""
+    if waveforms.ndim != 2:
+        raise AssertionError("expected waveforms shaped [batch, time]")
+    if waveforms.device.type != "cuda":
+        raise AssertionError("add_noise expects CUDA tensors")
+
+    if waveforms.numel() == 0:
+        return waveforms
+
+    if noise_dir is None and download:
+        from wav2aug.data.fetch import ensure_pack
+
+        noise_dir = ensure_pack(pack)
+
+    batch, total_time = waveforms.shape
+    device = waveforms.device
+    dtype = waveforms.dtype
+
+    ref = torch.empty(1, total_time, dtype=dtype)
+    sample = _sample_noise_like(ref, sample_rate, noise_dir)
+    noise_sample = sample.to(device=device, dtype=dtype).view(-1)
+    noise = noise_sample.unsqueeze(0).expand(batch, -1).contiguous()
+
+    return _mix_noise(
+        waveforms,
+        noise,
+        snr_low=snr_low,
+        snr_high=snr_high,
+    )
+
+
+@torch.no_grad()
+def add_babble_noise(
+    waveforms: torch.Tensor,
+    *,
+    snr_low: float = 0.0,
+    snr_high: float = 20.0,
+) -> torch.Tensor:
+    """Add babble noise derived from the batch sum."""
+    if waveforms.ndim != 2:
+        raise AssertionError("expected waveforms shaped [batch, time]")
+    if waveforms.device.type != "cuda":
+        raise AssertionError("add_babble_noise expects CUDA tensors")
+    if waveforms.numel() == 0:
+        return waveforms
+
+    babble = torch.sum(waveforms, dim=0, keepdim=True)
+    noise = babble.repeat(waveforms.size(0), 1)
+
+    return _mix_noise(
+        waveforms,
+        noise,
+        snr_low=snr_low,
+        snr_high=snr_high,
+    )
+
+
+__all__ = ["add_noise", "add_babble_noise"]
