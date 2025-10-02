@@ -24,8 +24,15 @@ def freq_drop(
     band_count_low: int = 1,
     band_count_high: int = 8,
     band_width: float = 0.10,
+    clamp_abs: float = 8.0,
 ) -> torch.Tensor:
-    """Frequency dropout using per-sample notch filters on CUDA tensors."""
+    """Frequency dropout using batch-shared notch filters on CUDA tensors.
+
+    Stabilization additions:
+    - Normalize each intermediate kernel
+    - Final kernel L1 normalization + nan_to_num
+    - Clamp output amplitude to +/- clamp_abs
+    """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms shaped [batch, time]")
     if waveforms.device.type != "cuda":
@@ -68,20 +75,23 @@ def freq_drop(
 
     for _ in range(band_count):
         freq = torch.rand((), device=device, dtype=dtype)
-        freq = freq * rng + bound_low
-        freq = torch.clamp(freq, 1e-12, 1.0)
+        freq = (freq * rng + bound_low).clamp(1e-12, 1.0 - 1e-8)
 
-        minus = freq - width
-        plus = freq + width
+        minus = (freq - width).clamp(1e-12, 1.0)
+        plus = (freq + width).clamp(1e-12, 1.0)
 
         hlpf = _sinc(3.0 * minus * t) * window
-        hlpf = hlpf / hlpf.sum()
+        hlpf_sum = hlpf.sum().abs().clamp_min(1e-8)
+        hlpf = hlpf / hlpf_sum
 
         hhpf = _sinc(3.0 * plus * t) * window
-        hhpf = hhpf / -hhpf.sum()
+        hhpf_sum = hhpf.sum().abs().clamp_min(1e-8)
+        hhpf = hhpf / -hhpf_sum
         hhpf[_PAD] += 1.0
 
         kernel = hlpf + hhpf
+        k_norm = kernel.abs().sum().clamp_min(1e-8)
+        kernel = kernel / k_norm
 
         drop = F.conv1d(
             drop.view(1, 1, _FILTER_LEN),
@@ -89,10 +99,19 @@ def freq_drop(
             padding=_PAD,
         ).view(_FILTER_LEN)
 
+    # Final normalization and safety
+    if drop.abs().sum() > 0:
+        drop = drop / drop.abs().sum().clamp_min(1e-8)
+    drop = torch.nan_to_num(drop, nan=0.0, posinf=0.0, neginf=0.0)
+
     x = waveforms.unsqueeze(1)
     weight = drop.view(1, 1, _FILTER_LEN)
     y = F.conv1d(x, weight, padding=_PAD)
-    waveforms.copy_(y.squeeze(1))
+    out = y.squeeze(1)
+    if clamp_abs is not None and clamp_abs > 0:
+        out = out.clamp_(-clamp_abs, clamp_abs)
+    out = torch.nan_to_num(out, nan=0.0, posinf=0.0, neginf=0.0)
+    waveforms.copy_(out)
     return waveforms
 
 
