@@ -26,9 +26,12 @@ def freq_drop(
     band_width: float = 0.10,
     clamp_abs: float = 8.0,
 ) -> torch.Tensor:
-    """Frequency dropout using batch-shared notch filters on CUDA tensors.
+    """Frequency dropout with per-sample independent notch filter stacks.
 
-    Stabilization additions:
+    Each waveform builds its own randomized multi-notch kernel instead of
+    reusing a single shared filter for the batch.
+
+    Stabilization additions retained:
     - Normalize each intermediate kernel
     - Final kernel L1 normalization + nan_to_num
     - Clamp output amplitude to +/- clamp_abs
@@ -58,60 +61,44 @@ def freq_drop(
     t = _T_IDX.to(device=device, dtype=dtype)
     window = _BLACKMAN.to(device=device, dtype=dtype)
 
-    band_count = int(
-        torch.randint(
-            band_count_low,
-            band_count_high + 1,
-            (),
-            device=device,
-        ).item()
-    )
-
-    if band_count <= 0:
-        return waveforms
-
-    drop = torch.zeros(_FILTER_LEN, device=device, dtype=dtype)
-    drop[_PAD] = 1.0
-
-    for _ in range(band_count):
-        freq = torch.rand((), device=device, dtype=dtype)
-        freq = (freq * rng + bound_low).clamp(1e-12, 1.0 - 1e-8)
-
-        minus = (freq - width).clamp(1e-12, 1.0)
-        plus = (freq + width).clamp(1e-12, 1.0)
-
-        hlpf = _sinc(3.0 * minus * t) * window
-        hlpf_sum = hlpf.sum().abs().clamp_min(1e-8)
-        hlpf = hlpf / hlpf_sum
-
-        hhpf = _sinc(3.0 * plus * t) * window
-        hhpf_sum = hhpf.sum().abs().clamp_min(1e-8)
-        hhpf = hhpf / -hhpf_sum
-        hhpf[_PAD] += 1.0
-
-        kernel = hlpf + hhpf
-        k_norm = kernel.abs().sum().clamp_min(1e-8)
-        kernel = kernel / k_norm
-
-        drop = F.conv1d(
-            drop.view(1, 1, _FILTER_LEN),
-            kernel.view(1, 1, _FILTER_LEN),
-            padding=_PAD,
-        ).view(_FILTER_LEN)
-
-    # Final normalization and safety
-    if drop.abs().sum() > 0:
-        drop = drop / drop.abs().sum().clamp_min(1e-8)
-    drop = torch.nan_to_num(drop, nan=0.0, posinf=0.0, neginf=0.0)
-
-    x = waveforms.unsqueeze(1)
-    weight = drop.view(1, 1, _FILTER_LEN)
-    y = F.conv1d(x, weight, padding=_PAD)
-    out = y.squeeze(1)
-    if clamp_abs is not None and clamp_abs > 0:
-        out = out.clamp_(-clamp_abs, clamp_abs)
-    out = torch.nan_to_num(out, nan=0.0, posinf=0.0, neginf=0.0)
-    waveforms.copy_(out)
+    for b in range(batch):
+        band_count = int(
+            torch.randint(
+                band_count_low,
+                band_count_high + 1,
+                (),
+                device=device,
+            ).item()
+        )
+        if band_count <= 0:
+            continue
+        drop = torch.zeros(_FILTER_LEN, device=device, dtype=dtype)
+        drop[_PAD] = 1.0
+        for _ in range(band_count):
+            freq = torch.rand((), device=device, dtype=dtype)
+            freq = (freq * rng + bound_low).clamp(1e-12, 1.0 - 1e-8)
+            minus = (freq - width).clamp(1e-12, 1.0)
+            plus = (freq + width).clamp(1e-12, 1.0)
+            hlpf = _sinc(3.0 * minus * t) * window
+            hlpf = hlpf / hlpf.sum().abs().clamp_min(1e-8)
+            hhpf = _sinc(3.0 * plus * t) * window
+            hhpf = hhpf / -hhpf.sum().abs().clamp_min(1e-8)
+            hhpf[_PAD] += 1.0
+            kernel = hlpf + hhpf
+            kernel = kernel / kernel.abs().sum().clamp_min(1e-8)
+            drop = F.conv1d(
+                drop.view(1, 1, _FILTER_LEN),
+                kernel.view(1, 1, _FILTER_LEN),
+                padding=_PAD,
+            ).view(_FILTER_LEN)
+        if drop.abs().sum() > 0:
+            drop = drop / drop.abs().sum().clamp_min(1e-8)
+        drop = torch.nan_to_num(drop, nan=0.0, posinf=0.0, neginf=0.0)
+        y = F.conv1d(waveforms[b:b+1].unsqueeze(1), drop.view(1,1,_FILTER_LEN), padding=_PAD).squeeze(1)
+        if clamp_abs is not None and clamp_abs > 0:
+            y = y.clamp_(-clamp_abs, clamp_abs)
+        y = torch.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
+        waveforms[b].copy_(y[0])
     return waveforms
 
 

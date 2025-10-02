@@ -30,9 +30,9 @@ def rand_amp_scale(
     dtype = waveforms.dtype
     denom = waveforms.abs().amax(dim=1, keepdim=True).clamp_min(1.0)
 
-    scales = torch.rand((), device=device, dtype=dtype)
+    # Per-sample scaling factors
+    scales = torch.rand((waveforms.size(0), 1), device=device, dtype=dtype)
     scales = scales * (amp_high - amp_low) + amp_low
-
     waveforms.mul_(scales / denom)
     return waveforms
 

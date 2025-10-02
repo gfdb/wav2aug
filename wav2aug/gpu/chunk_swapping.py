@@ -42,35 +42,30 @@ def chunk_swap(
 
     device = waveforms.device
 
-    slack = total_time - _NUM_CHUNKS * chunk_size
-    if slack == 0:
-        offsets = torch.zeros(_NUM_CHUNKS, device=device, dtype=torch.long)
-    else:
-        scores = torch.rand((slack + _NUM_CHUNKS,), device=device)
-        topk = torch.topk(scores, _NUM_CHUNKS, largest=False).indices
-        offsets = torch.sort(topk).values
-        offsets = offsets - torch.arange(_NUM_CHUNKS, device=device)
-
-    starts = offsets + torch.arange(_NUM_CHUNKS, device=device) * chunk_size
-
-    perm_scores = torch.rand((_NUM_CHUNKS,), device=device)
-    perm = torch.argsort(perm_scores)
-
-    if torch.equal(perm, torch.arange(_NUM_CHUNKS, device=device)):
-        return waveforms
-
     src = waveforms.clone()
     arange_chunk = torch.arange(chunk_size, device=device)
 
-    for dest_chunk in range(_NUM_CHUNKS):
-        dest_start = starts[dest_chunk]
-        src_chunk = perm[dest_chunk]
-        src_start = starts[src_chunk]
-
-        dest_idx = dest_start + arange_chunk
-        src_idx = src_start + arange_chunk
-
-        waveforms[:, dest_idx] = src[:, src_idx]
+    for b in range(batch):
+        slack = total_time - _NUM_CHUNKS * chunk_size
+        if slack == 0:
+            offsets = torch.zeros(_NUM_CHUNKS, device=device, dtype=torch.long)
+        else:
+            scores = torch.rand((slack + _NUM_CHUNKS,), device=device)
+            topk = torch.topk(scores, _NUM_CHUNKS, largest=False).indices
+            offsets = torch.sort(topk).values
+            offsets = offsets - torch.arange(_NUM_CHUNKS, device=device)
+        starts = offsets + torch.arange(_NUM_CHUNKS, device=device) * chunk_size
+        perm_scores = torch.rand((_NUM_CHUNKS,), device=device)
+        perm = torch.argsort(perm_scores)
+        if torch.equal(perm, torch.arange(_NUM_CHUNKS, device=device)):
+            continue
+        for dest_chunk in range(_NUM_CHUNKS):
+            dest_start = starts[dest_chunk]
+            src_chunk = perm[dest_chunk]
+            src_start = starts[src_chunk]
+            dest_idx = dest_start + arange_chunk
+            src_idx = src_start + arange_chunk
+            waveforms[b, dest_idx] = src[b, src_idx]
 
     return waveforms
 

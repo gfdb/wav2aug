@@ -29,16 +29,12 @@ def time_dropout(
     chunk_size_low: int = _CHUNK_SIZE_LOW,
     chunk_size_high: int = _CHUNK_SIZE_HIGH,
 ) -> torch.Tensor:
-    """Apply time dropout on a batch of mono waveforms residing on GPU.
+    """Apply time dropout with per-sample independent random zeroed segments.
 
-    Args:
-        waveforms: Tensor of shape [batch, time] located on CUDA device.
-        sample_rate: Audio sample rate in Hz. Controls dropout segment scaling.
-        chunk_count_low/high: Inclusive range for number of segments per sample.
-    chunk_size_low/high: Bounds for segment lengths (defined at 16 kHz base).
-
-    Returns:
-        Input tensor with segments zeroed in-place.
+    Each waveform draws its own number of chunks (uniform integer in
+    [chunk_count_low, chunk_count_high]), random lengths in the (scaled)
+    range [chunk_size_low, chunk_size_high], and random start positions.
+    Segments are zeroed in-place.
     """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms with shape [batch, time]")
@@ -49,8 +45,6 @@ def time_dropout(
     if batch == 0 or total_time == 0:
         return waveforms
 
-    chunk_count_low = int(chunk_count_low)
-    chunk_count_high = int(chunk_count_high)
     if chunk_count_low < 0:
         raise ValueError("chunk_count_low must be non-negative")
     if chunk_count_high < chunk_count_low:
@@ -66,49 +60,36 @@ def time_dropout(
 
     max_len = min(max_len, total_time)
     min_len = min(min_len, max_len)
-
     if chunk_count_high == 0 or max_len == 0:
         return waveforms
 
     device = waveforms.device
 
-    chunk_count = int(
-        torch.randint(
-            chunk_count_low,
-            chunk_count_high + 1,
-            (),
+    for b in range(batch):
+        chunk_count = int(
+            torch.randint(
+                chunk_count_low,
+                chunk_count_high + 1,
+                (),
+                device=device,
+            ).item()
+        )
+        if chunk_count == 0:
+            continue
+        lengths = torch.randint(
+            min_len,
+            max_len + 1,
+            (chunk_count,),
             device=device,
-        ).item()
-    )
-
-    if chunk_count == 0:
-        return waveforms
-
-    lengths = torch.randint(
-        min_len,
-        max_len + 1,
-        (chunk_count,),
-        device=device,
-    )
-
-    lengths = torch.clamp(lengths, max=total_time)
-
-    rand = torch.rand((chunk_count,), device=device)
-    start_max = (total_time - lengths).clamp_min(0)
-    starts = torch.floor(rand * (start_max + 1).to(rand.dtype)).to(torch.long)
-
-    positions = torch.arange(total_time, device=device).view(1, total_time)
-    starts_exp = starts.unsqueeze(1)
-    lengths_exp = lengths.unsqueeze(1)
-
-    chunk_mask = (
-        (positions >= starts_exp)
-        & (positions < starts_exp + lengths_exp)
-    )
-
-    drop_mask = chunk_mask.any(dim=0)
-    waveforms[:, drop_mask] = 0.0
-
+        )
+        lengths = torch.clamp(lengths, max=total_time)
+        rand = torch.rand((chunk_count,), device=device)
+        start_max = (total_time - lengths).clamp_min(0)
+        starts = torch.floor(rand * (start_max + 1).to(rand.dtype)).to(torch.long)
+        for i in range(chunk_count):
+            s = int(starts[i].item())
+            e = int((starts[i] + lengths[i]).item())
+            waveforms[b, s:e] = 0.0
     return waveforms
 
 

@@ -47,8 +47,8 @@ def speed_perturb(
     dtype = waveforms.dtype
 
     options = torch.tensor(_SPEED_CHANGES, device=device, dtype=dtype)
-    idx = torch.randint(0, len(_SPEED_CHANGES), (), device=device)
-    speed = options[idx]
+    speed_indices = torch.randint(0, len(_SPEED_CHANGES), (batch,), device=device)
+    speeds = options.index_select(0, speed_indices)
 
     if lengths is None:
         effective_lengths = torch.full((batch,), total_time, device=device, dtype=torch.long)
@@ -78,43 +78,33 @@ def speed_perturb(
     new_lengths = torch.zeros_like(effective_lengths)
     if positive_mask.any():
         lengths_float = effective_lengths.to(dtype=dtype)
-        scaled = lengths_float[positive_mask] / speed
+        scaled = lengths_float[positive_mask] / speeds[positive_mask]
         scaled = torch.clamp(scaled, min=1.0)
         new_lengths[positive_mask] = torch.round(scaled).to(torch.long)
 
-    combos = torch.stack((effective_lengths, new_lengths), dim=1)
-    unique_pairs, inverse = torch.unique(combos, dim=0, return_inverse=True)
-
     resampled_map: dict[int, torch.Tensor] = {}
-    for pair_idx in range(unique_pairs.size(0)):
-        in_len = int(unique_pairs[pair_idx, 0].item())
-        out_len = int(unique_pairs[pair_idx, 1].item())
+    for b in range(batch):
+        in_len = int(effective_lengths[b].item())
+        out_len = int(new_lengths[b].item())
         if in_len <= 0:
             continue
-
-        indices = torch.nonzero(inverse == pair_idx, as_tuple=False).view(-1)
-        if indices.numel() == 0:
-            continue
-
-        subset = base.index_select(0, indices)[:, :in_len]
+        subset = base[b:b+1, :in_len]
         if out_len == in_len:
-            resampled = subset
+            resampled = subset[0]
         elif in_len == 1:
-            resampled = subset[:, :1].expand(-1, out_len).contiguous()
+            resampled = subset[:, :1].expand(-1, out_len).contiguous()[0]
         else:
             resampled = F.interpolate(
                 subset.unsqueeze(1),
                 size=out_len,
                 mode="linear",
                 align_corners=True,
-            ).squeeze(1)
-
-        for pos, batch_idx in enumerate(indices.tolist()):
-            resampled_map[batch_idx] = resampled[pos]
+            ).squeeze(1)[0]
+        resampled_map[b] = resampled
 
     updated_lengths = effective_lengths.clone()
 
-    crop_frac = torch.rand((), device=device)
+    crop_fracs = torch.rand((batch,), device=device)
 
     for batch_idx in range(batch):
         current_len = int(effective_lengths[batch_idx].item())
@@ -137,7 +127,7 @@ def speed_perturb(
         if target_len >= total_time:
             start_max = max(0, target_len - total_time)
             if start_max > 0:
-                start = int(torch.floor(crop_frac * (start_max + 1)).item())
+                start = int(torch.floor(crop_fracs[batch_idx] * (start_max + 1)).item())
                 start = min(start, start_max)
             else:
                 start = 0

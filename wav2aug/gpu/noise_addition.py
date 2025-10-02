@@ -26,9 +26,9 @@ def _mix_noise(
 
     device = waveforms.device
     dtype = waveforms.dtype
-    snr = torch.rand((), device=device, dtype=dtype)
-    snr = snr * (snr_high - snr_low) + snr_low
 
+    snr = torch.rand((waveforms.size(0), 1), device=device, dtype=dtype)
+    snr = snr * (snr_high - snr_low) + snr_low
     pow10 = torch.pow(torch.tensor(10.0, device=device, dtype=dtype), snr / 20.0)
     factor = 1.0 / (pow10 + 1.0)
 
@@ -69,10 +69,14 @@ def add_noise(
     device = waveforms.device
     dtype = waveforms.dtype
 
-    ref = torch.empty(1, total_time, dtype=dtype)
-    sample = _sample_noise_like(ref, sample_rate, noise_dir)
-    noise_sample = sample.to(device=device, dtype=dtype).view(-1)
-    noise = noise_sample.unsqueeze(0).expand(batch, -1).contiguous()
+    # sample independent noise per waveform
+    noises = []
+    for _ in range(batch):
+        ref = torch.empty(1, total_time, dtype=dtype)
+        sample = _sample_noise_like(ref, sample_rate, noise_dir)
+        noise_sample = sample.to(device=device, dtype=dtype).view(-1)
+        noises.append(noise_sample)
+    noise = torch.stack(noises, dim=0)
 
     return _mix_noise(
         waveforms,
@@ -97,15 +101,13 @@ def add_babble_noise(
     if waveforms.numel() == 0:
         return waveforms
 
-    babble = torch.sum(waveforms, dim=0, keepdim=True)
-    noise = babble.repeat(waveforms.size(0), 1)
-
-    return _mix_noise(
-        waveforms,
-        noise,
-        snr_low=snr_low,
-        snr_high=snr_high,
-    )
+    batch = waveforms.size(0)
+    if batch == 1:
+        noise = waveforms.clone()
+    else:
+        total = torch.sum(waveforms, dim=0, keepdim=True)
+        noise = (total - waveforms) / (batch - 1)
+    return _mix_noise(waveforms, noise, snr_low=snr_low, snr_high=snr_high)
 
 
 __all__ = ["add_noise", "add_babble_noise"]

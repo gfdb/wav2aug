@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Callable, List
-import os
 
 import torch
 
@@ -17,27 +16,12 @@ from wav2aug.gpu import (
     time_dropout,
 )
 
-
-_INTEGER_DTYPES = (
-    torch.int8,
-    torch.uint8,
-    torch.int16,
-    torch.int32,
-    torch.int64,
-)
-
-_CHECK_ENV = "WAV2AUG_GPU_CHECK_FINITE"
-_STATS_ENV = "WAV2AUG_GPU_DEBUG_STATS"
-_RMS_LIM_ENV = "WAV2AUG_GPU_RMS_LIMIT"
-
-
 class Wav2Aug:
     """Apply two random GPU augmentations to a batch of waveforms.
 
-    Set environment variable WAV2AUG_GPU_CHECK_FINITE=1 to enable a runtime
-    finite check after each op; if non-finite values are produced the op's
-    effect is reverted and a warning is printed. This is intended for
-    debugging training-time NaNs and has a small performance cost.
+    All augmentation functions sample parameters independently per waveform
+    (per-sample randomness). Debug/stat/renorm features have been stripped
+    for a lean training-time path.
     """
 
     def __init__(self, sample_rate: int) -> None:
@@ -52,6 +36,17 @@ class Wav2Aug:
             lambda x, lengths: rand_amp_scale(x),
             lambda x, lengths: speed_perturb(x, lengths=lengths),
             lambda x, lengths: time_dropout(x, sample_rate=self.sample_rate),
+        ]
+        self._op_names: List[str] = [
+            "add_noise",
+            "add_babble_noise",
+            "chunk_swap",
+            "freq_drop",
+            "invert_polarity",
+            "rand_amp_clip",
+            "rand_amp_scale",
+            "speed_perturb",
+            "time_dropout",
         ]
 
     @torch.no_grad()
@@ -74,52 +69,13 @@ class Wav2Aug:
                 raise AssertionError("expected lengths shaped [batch]")
             if lengths.device != waveforms.device:
                 raise AssertionError("lengths tensor must share device with waveforms")
-            if not (torch.is_floating_point(lengths) or lengths.dtype in _INTEGER_DTYPES):
-                raise AssertionError("lengths tensor must use a float or integer dtype")
 
-        check_finite = bool(int(os.getenv(_CHECK_ENV, "0")))
-        log_stats = bool(int(os.getenv(_STATS_ENV, "0")))
-        rms_limit_str = os.getenv(_RMS_LIM_ENV)
-        rms_limit = None
-        if rms_limit_str is not None:
-            try:
-                rms_limit = float(rms_limit_str)
-                if rms_limit <= 0:
-                    rms_limit = None
-            except ValueError:
-                rms_limit = None
-        indices = torch.randperm(len(self._base_ops), device=waveforms.device)[:2].tolist()
+        perm = torch.randperm(len(self._base_ops), device=waveforms.device)
+        take = min(2, len(self._base_ops))
+        indices = perm[:take].tolist()
         for idx in indices:
             op = self._base_ops[idx]
-            before = waveforms.clone() if check_finite else None
-            if log_stats:
-                with torch.no_grad():
-                    pre_mean = float(waveforms.mean().item())
-                    pre_std = float(waveforms.std(unbiased=False).item())
-                    pre_max = float(waveforms.abs().max().item())
             waveforms = op(waveforms, lengths)
-            if rms_limit is not None:
-                # scale batch if any item exceeds target RMS
-                with torch.no_grad():
-                    rms = waveforms.pow(2).mean(dim=1, keepdim=True).sqrt()
-                    over = rms > rms_limit
-                    if over.any():
-                        scale = (rms_limit / rms.clamp_min(1e-12))
-                        waveforms[over] *= scale[over]
-            if check_finite and not torch.isfinite(waveforms).all():
-                if before is not None:
-                    waveforms.copy_(before)
-                print(f"[wav2aug] reverted non-finite output from op index {idx}", flush=True)
-            elif log_stats:
-                with torch.no_grad():
-                    post_mean = float(waveforms.mean().item())
-                    post_std = float(waveforms.std(unbiased=False).item())
-                    post_max = float(waveforms.abs().max().item())
-                print(
-                    f"[wav2aug][op={idx}] mean {pre_mean:.4g}->{post_mean:.4g} "
-                    f"std {pre_std:.4g}->{post_std:.4g} max {pre_max:.4g}->{post_max:.4g}",
-                    flush=True,
-                )
         return waveforms if lengths is None else (waveforms, lengths)
 
 

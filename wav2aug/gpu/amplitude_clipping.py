@@ -33,7 +33,8 @@ def rand_amp_clip(
     peaks = waveforms.abs().amax(dim=1, keepdim=True).clamp_min(1.0)
     normalized = waveforms / peaks
 
-    clip = torch.rand((), device=device, dtype=dtype)
+    # Per-sample clip thresholds
+    clip = torch.rand((waveforms.size(0), 1), device=device, dtype=dtype)
     clip = clip * (clip_high - clip_low) + clip_low
     clip = clip.clamp_min(eps)
 
