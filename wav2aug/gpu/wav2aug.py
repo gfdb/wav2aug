@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Callable, List
+import os
 
 import torch
 
@@ -25,9 +26,17 @@ _INTEGER_DTYPES = (
     torch.int64,
 )
 
+_CHECK_ENV = "WAV2AUG_GPU_CHECK_FINITE"
+
 
 class Wav2Aug:
-    """Apply two random GPU augmentations to a batch of waveforms."""
+    """Apply two random GPU augmentations to a batch of waveforms.
+
+    Set environment variable WAV2AUG_GPU_CHECK_FINITE=1 to enable a runtime
+    finite check after each op; if non-finite values are produced the op's
+    effect is reverted and a warning is printed. This is intended for
+    debugging training-time NaNs and has a small performance cost.
+    """
 
     def __init__(self, sample_rate: int) -> None:
         self.sample_rate = int(sample_rate)
@@ -66,10 +75,16 @@ class Wav2Aug:
             if not (torch.is_floating_point(lengths) or lengths.dtype in _INTEGER_DTYPES):
                 raise AssertionError("lengths tensor must use a float or integer dtype")
 
+        check_finite = bool(int(os.getenv(_CHECK_ENV, "0")))
         indices = torch.randperm(len(self._base_ops), device=waveforms.device)[:2].tolist()
         for idx in indices:
             op = self._base_ops[idx]
+            before = waveforms.clone() if check_finite else None
             waveforms = op(waveforms, lengths)
+            if check_finite and not torch.isfinite(waveforms).all():
+                if before is not None:
+                    waveforms.copy_(before)
+                print(f"[wav2aug] reverted non-finite output from op index {idx}", flush=True)
         return waveforms if lengths is None else (waveforms, lengths)
 
 
