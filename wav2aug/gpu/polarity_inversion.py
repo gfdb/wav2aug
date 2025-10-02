@@ -21,8 +21,10 @@ def invert_polarity(
         return waveforms
 
     batch = waveforms.size(0)
-    flips = (torch.rand((batch,), device=waveforms.device) < prob).view(batch, 1)
-    waveforms[flips] = -waveforms[flips]
+
+    flips = torch.rand(batch, device=waveforms.device) < prob
+    if flips.any():
+        waveforms[flips] *= -1
     return waveforms
 
 
