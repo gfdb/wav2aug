@@ -20,6 +20,7 @@ def _scaled_bounds(sample_rate: int) -> tuple[int, int]:
     return min_len, max_len
 
 
+@torch.no_grad()
 def time_dropout(
     waveforms: torch.Tensor,
     sample_rate: int = _BASE_SAMPLE_RATE,

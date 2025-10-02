@@ -7,6 +7,7 @@ from wav2aug.cpu._noise_addition import _sample_noise_like
 _EPS = 1e-14
 
 
+@torch.no_grad()
 def _mix_noise(
     waveforms: torch.Tensor,
     noise: torch.Tensor,
