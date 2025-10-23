@@ -28,7 +28,7 @@ class Wav2Aug:
             lambda x, lengths: rand_amp_clip(x),
             lambda x, lengths: rand_amp_scale(x),
             lambda x, lengths: speed_perturb(x, lengths=lengths),
-            lambda x, lengths: time_dropout(x, sample_rate=self.sample_rate),
+            lambda x, lengths: time_dropout(x, sample_rate=self.sample_rate, lengths=lengths),
         ]
         self._op_names: List[str] = [
             "add_noise",
