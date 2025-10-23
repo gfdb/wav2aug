@@ -4,17 +4,10 @@ from typing import Callable, List
 
 import torch
 
-from wav2aug.gpu import (
-    add_babble_noise,
-    add_noise,
-    chunk_swap,
-    freq_drop,
-    invert_polarity,
-    rand_amp_clip,
-    rand_amp_scale,
-    speed_perturb,
-    time_dropout,
-)
+from wav2aug.gpu import (add_babble_noise, add_noise, chunk_swap, freq_drop,
+                         invert_polarity, rand_amp_clip, rand_amp_scale,
+                         speed_perturb, time_dropout)
+
 
 class Wav2Aug:
     """Apply two random GPU augmentations to a batch of waveforms.
@@ -24,7 +17,7 @@ class Wav2Aug:
     for a lean training-time path.
     """
 
-    def __init__(self, sample_rate: int) -> None:
+    def __init__(self, sample_rate: int, disable: int = None) -> None:
         self.sample_rate = int(sample_rate)
         self._base_ops: List[Callable[[torch.Tensor, torch.Tensor | None], torch.Tensor]] = [
             lambda x, lengths: add_noise(x, self.sample_rate),
@@ -48,6 +41,13 @@ class Wav2Aug:
             "speed_perturb",
             "time_dropout",
         ]
+
+        if disable is not None:
+            print(f'disabling {self._op_names[disable]}')
+
+            del self._base_ops[disable]
+            del self._op_names[disable]
+
 
     @torch.no_grad()
     def __call__(

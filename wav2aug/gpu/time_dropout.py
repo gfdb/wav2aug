@@ -19,10 +19,10 @@ def _scaled_bounds(sample_rate: int) -> tuple[int, int]:
         max_len = _CHUNK_SIZE_HIGH
     return min_len, max_len
 
-
 @torch.no_grad()
 def time_dropout(
     waveforms: torch.Tensor,
+    lengths: torch.Tensor,
     sample_rate: int = _BASE_SAMPLE_RATE,
     *,
     chunk_count_low: int = _CHUNK_COUNT_LOW,
@@ -35,12 +35,10 @@ def time_dropout(
     Each waveform draws its own number of chunks (uniform integer in
     [chunk_count_low, chunk_count_high]), random lengths in the (scaled)
     range [chunk_size_low, chunk_size_high], and random start positions.
-    Segments are zeroed in-place.
+    Segments are zeroed only within the valid portion of each waveform.
     """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms with shape [batch, time]")
-    if waveforms.device.type != "cuda":
-        raise AssertionError("time_dropout expects CUDA tensors")
 
     batch, total_time = waveforms.shape
     if batch == 0 or total_time == 0:
@@ -50,6 +48,9 @@ def time_dropout(
         raise ValueError("chunk_count_low must be non-negative")
     if chunk_count_high < chunk_count_low:
         raise ValueError("chunk_count_high must be >= chunk_count_low")
+
+    # absolute valid samples per row
+    valid_lengths = (lengths * total_time).to(torch.long).clamp_(0, total_time)
 
     min_len, max_len = _scaled_bounds(sample_rate)
     if sample_rate != _BASE_SAMPLE_RATE:
@@ -67,6 +68,10 @@ def time_dropout(
     device = waveforms.device
 
     for b in range(batch):
+        row_valid = int(valid_lengths[b].item())
+        if row_valid <= 0:
+            continue
+
         chunk_count = int(
             torch.randint(
                 chunk_count_low,
@@ -77,20 +82,25 @@ def time_dropout(
         )
         if chunk_count == 0:
             continue
-        lengths = torch.randint(
+
+        lengths_b = torch.randint(
             min_len,
             max_len + 1,
             (chunk_count,),
             device=device,
         )
-        lengths = torch.clamp(lengths, max=total_time)
+        lengths_b = torch.clamp(lengths_b, max=row_valid)
+
         rand = torch.rand((chunk_count,), device=device)
-        start_max = (total_time - lengths).clamp_min(0)
-        starts = torch.floor(rand * (start_max + 1).to(rand.dtype)).to(torch.long)
+        start_max = (row_valid - lengths_b).clamp_min(0)
+        starts_b = torch.floor(rand * (start_max + 1).to(rand.dtype)).to(torch.long)
+
         for i in range(chunk_count):
-            s = int(starts[i].item())
-            e = int((starts[i] + lengths[i]).item())
-            waveforms[b, s:e] = 0.0
+            s = int(starts_b[i].item())
+            e = int((starts_b[i] + lengths_b[i]).item())
+            if e > s:
+                waveforms[b, s:e] = 0.0
+
     return waveforms
 
 
