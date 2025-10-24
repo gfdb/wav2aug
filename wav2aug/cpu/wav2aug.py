@@ -24,7 +24,8 @@ class Wav2Aug:
         self, 
         sample_rate: int,
         *, 
-        buffer_capacity: int = 16, 
+        buffer_capacity: int = 16,
+        disable: int = None,
     ):
         self.sample_rate = int(sample_rate)
         self.buffer_capacity = int(buffer_capacity)
@@ -44,6 +45,9 @@ class Wav2Aug:
             lambda x: speed_perturb(x),
             lambda x: time_drop(x, self.sample_rate),
         ]
+
+        if disable is not None:
+            del self._base_ops[disable]
 
     @torch.no_grad()
     def __call__(self, waveform: torch.Tensor) -> torch.Tensor:
