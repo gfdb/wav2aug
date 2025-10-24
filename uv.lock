@@ -543,6 +543,36 @@ wheels = [
 ]
 
 [[package]]
+name = "torchaudio"
+version = "2.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "torch" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/30/81/92d34ff136b17ddda872f6d8149f2ca927ad53a37ae26d02cb5f66435772/torchaudio-2.8.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:c2f44cf279f673cfcdd8f576c349eee8bedf8caab351a5dd78b32970cc34a212", size = 1852315 },
+    { url = "https://files.pythonhosted.org/packages/95/c8/e46c22a3c059844bb0f1b670317c9e538b51728558326dcd9e5fffbf2ec2/torchaudio-2.8.0-cp310-cp310-manylinux_2_28_aarch64.whl", hash = "sha256:d3c1b85b26a09832d139f6d6da6b66caeb51d2e16e08f8587665c44a9e1aa8f9", size = 1685620 },
+    { url = "https://files.pythonhosted.org/packages/d8/f5/69db76b564263f22c1788cc298ab1c4e2391a79fa8ba7b4a3e76d945292a/torchaudio-2.8.0-cp310-cp310-manylinux_2_28_x86_64.whl", hash = "sha256:58f912bf2d289c709b42a55475b2b483becec79d9affb7684b606bb1f896b434", size = 4001714 },
+    { url = "https://files.pythonhosted.org/packages/f1/18/63adf60a9f0592c6dcea2b37735990881edbbe671e3af3ae79f2da816a50/torchaudio-2.8.0-cp310-cp310-win_amd64.whl", hash = "sha256:4e2b4712ad6d7547ce82d84567c8c29d5e2966ff1d31d94e1644024fb4b2649f", size = 2500313 },
+    { url = "https://files.pythonhosted.org/packages/dd/bf/6b01ef3defb8d0a772c863588711e9b2b011c27d6b37c1b9d15a359c8442/torchaudio-2.8.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:c9276857d241c6de257af765c0f51fc011af38cb725401495121b280913007cf", size = 1859094 },
+    { url = "https://files.pythonhosted.org/packages/75/ca/da5d0a3bb7d114a8b590ecce14859ea0a05102bb4de68cdd1ed7a90634d6/torchaudio-2.8.0-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:4573c6042950c20278e3608a9a38050ba0bc72e0049e1bbfd249caf859a8029b", size = 1692033 },
+    { url = "https://files.pythonhosted.org/packages/b6/ef/62ac736d8f906cc414181050e08a495a637dab985186c34bd76ea37efbc0/torchaudio-2.8.0-cp311-cp311-manylinux_2_28_x86_64.whl", hash = "sha256:776c0b4ba84b9e3ddf6304b9c47cd63549d7896a6f3d5184ece074cc3d76ed6b", size = 4011716 },
+    { url = "https://files.pythonhosted.org/packages/14/86/015337c8434abc604b8680371df783f66c421a7f211cbe40a374b0540b6d/torchaudio-2.8.0-cp311-cp311-win_amd64.whl", hash = "sha256:078105bf80f725c0215a0bebac8cb2fb1b3993ab32bdc3fcd50145a5b4127001", size = 2505194 },
+    { url = "https://files.pythonhosted.org/packages/ac/cc/c2e2a3eb6ee956f73c68541e439916f8146170ea9cc61e72adea5c995312/torchaudio-2.8.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:ddef94bf181e6447cbb05f38beaca8f6c5bb8d2b9ddced1aa3452025b9fc70d3", size = 1856736 },
+    { url = "https://files.pythonhosted.org/packages/c7/0d/24dad878784f1edd62862f27173781669f0c71eb46368636787d1e364188/torchaudio-2.8.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:862e2e40bf09d865e5df080a84c1a39bbcef40e43140f4b1737eb3a389d3b38f", size = 1692930 },
+    { url = "https://files.pythonhosted.org/packages/c2/a6/84d80f34472503e9eb82245d7df501c59602d75d7360e717fb9b84f91c5e/torchaudio-2.8.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:93a8583f280fe83ba021aa713319381ea71362cc87b67ee38e97a43cb2254aee", size = 4014607 },
+    { url = "https://files.pythonhosted.org/packages/43/ab/96ad33afa320738a7cfb4b51ba97e2f3cfb1e04ae3115d5057655103ba4f/torchaudio-2.8.0-cp312-cp312-win_amd64.whl", hash = "sha256:4b82cacd1b8ccd543b1149d8cab257a40dfda8119023d2e3a96c66349c84bffb", size = 2499890 },
+    { url = "https://files.pythonhosted.org/packages/3b/ea/2a68259c4dbb5fe44ebfdcfa40b115010d8c677221a7ef0f5577f3c4f5f1/torchaudio-2.8.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:f851d32e94ca05e470f0c60e25726ec1e0eb71cb2ca5a0206b7fd03272ccc3c8", size = 1857045 },
+    { url = "https://files.pythonhosted.org/packages/0d/a3/1c79a8ef29fe403b83bdfc033db852bc2a888b80c406325e5c6fb37a7f2d/torchaudio-2.8.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:09535a9b727c0793cd07c1ace99f3f353626281bcc3e30c2f2314e3ebc9d3f96", size = 1692755 },
+    { url = "https://files.pythonhosted.org/packages/49/df/61941198e9ac6bcebfdd57e1836e4f3c23409308e3d8d7458f0198a6a366/torchaudio-2.8.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:d2a85b124494736241884372fe1c6dd8c15e9bc1931bd325838c5c00238c7378", size = 4013897 },
+    { url = "https://files.pythonhosted.org/packages/c3/ab/7175d35a4bbc4a465a9f1388571842f16eb6dec5069d7ea9c8c2d7b5b401/torchaudio-2.8.0-cp313-cp313-win_amd64.whl", hash = "sha256:c1b5139c840367a7855a062a06688a416619f6fd2ca46d9b9299b49a7d133dfd", size = 2500085 },
+    { url = "https://files.pythonhosted.org/packages/34/1a/69b9f8349d9d57953d5e7e445075cbf74000173fb5f5d5d9e9d59415fc63/torchaudio-2.8.0-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:68df9c9068984edff8065c2b6656725e6114fe89281b0cf122c7505305fc98a4", size = 1935600 },
+    { url = "https://files.pythonhosted.org/packages/71/76/40fec21b65bccfdc5c8cdb9d511033ab07a7ad4b05f0a5b07f85c68279fc/torchaudio-2.8.0-cp313-cp313t-manylinux_2_28_aarch64.whl", hash = "sha256:1951f10ed092f2dda57634f6a3950ef21c9d9352551aa84a9fccd51bbda18095", size = 1704199 },
+    { url = "https://files.pythonhosted.org/packages/8e/53/95c3363413c2f2009f805144160b093a385f641224465fbcd717449c71fb/torchaudio-2.8.0-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:4f7d97494698d98854129349b12061e8c3398d33bd84c929fa9aed5fd1389f73", size = 4020596 },
+    { url = "https://files.pythonhosted.org/packages/52/27/7fc2d7435af044ffbe0b9b8e98d99eac096d43f128a5cde23c04825d5dcf/torchaudio-2.8.0-cp313-cp313t-win_amd64.whl", hash = "sha256:d4a715d09ac28c920d031ee1e60ecbc91e8a5079ad8c61c0277e658436c821a6", size = 2549553 },
+]
+
+[[package]]
 name = "torchcodec"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -591,6 +621,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "torch" },
+    { name = "torchaudio" },
     { name = "torchcodec" },
 ]
 
@@ -604,6 +635,7 @@ test = [
 requires-dist = [
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8" },
     { name = "pytest-cov", marker = "extra == 'test'" },
-    { name = "torch", specifier = ">=2.8.0" },
+    { name = "torch", specifier = ">=2.0.0" },
+    { name = "torchaudio", specifier = ">=2.8.0" },
     { name = "torchcodec", specifier = ">=0.7.0" },
 ]
