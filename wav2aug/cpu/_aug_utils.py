@@ -27,22 +27,6 @@ def _sample_unique_sorted_floyd(M: int, N: int) -> torch.Tensor:
             S.add(r)
     return torch.tensor(sorted(S), dtype=torch.long)
 
-def _match_channels(x: torch.Tensor, C: int) -> torch.Tensor:
-    """Match tensor to target channel count.
-    
-    Args:
-        x: Input tensor in [C, T] format.
-        C: Target channel count.
-        
-    Returns:
-        Tensor with channel dimension adjusted to C channels.
-    """
-    if x.size(0) == C:
-        return x
-    if x.size(0) == 1 and C > 1:
-        return x.repeat(C, 1)
-    return x.mean(dim=0, keepdim=True).repeat(C, 1)
-
 def apply_snr_and_mix(
     view: torch.Tensor,
     noise: torch.Tensor,
