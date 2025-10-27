@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from wav2aug.cpu._noise_addition import _sample_noise_like
+from wav2aug.utils._aug_utils import _sample_noise_like
 
 _EPS = 1e-14
 
