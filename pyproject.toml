@@ -51,3 +51,14 @@ packages = { find = { where = ["."], include = ["wav2aug*"], exclude = ["tests*"
 
 [tool.setuptools.package-data]
 wav2aug = ["py.typed", "**/*.yaml", "assets/**"]
+
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+# Include only python source files
+include = "\\.pyi?$"
+# Exclude common build, virtualenv and cache directories
+exclude = '''
+/(\.|build|dist|__pycache__|\.venv|venv|\.eggs|\.git|\.hg|\.mypy_cache|\.pytest_cache)/
+'''

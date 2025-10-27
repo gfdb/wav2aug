@@ -1,9 +1,18 @@
 import pytest
 import torch
 
-from wav2aug.gpu import (Wav2Aug, add_babble_noise, add_noise, chunk_swap,
-                         freq_drop, invert_polarity, rand_amp_clip,
-                         rand_amp_scale, speed_perturb, time_dropout)
+from wav2aug.gpu import (
+    Wav2Aug,
+    add_babble_noise,
+    add_noise,
+    chunk_swap,
+    freq_drop,
+    invert_polarity,
+    rand_amp_clip,
+    rand_amp_scale,
+    speed_perturb,
+    time_dropout,
+)
 
 pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(),
@@ -11,7 +20,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _waveforms(batch: int = 3, time: int = 256, *, dtype: torch.dtype = torch.float32) -> torch.Tensor:
+def _waveforms(
+    batch: int = 3, time: int = 256, *, dtype: torch.dtype = torch.float32
+) -> torch.Tensor:
     torch.manual_seed(0)
     return torch.randn(batch, time, device="cuda", dtype=dtype)
 
@@ -36,11 +47,15 @@ def test_rand_amp_scale_inplace_preserves_shape():
 
 def test_chunk_swap_outputs_permutation():
     batch, time = 2, 400
-    base = torch.arange(batch * time, device="cuda", dtype=torch.float32).view(batch, time)
+    base = torch.arange(batch * time, device="cuda", dtype=torch.float32).view(
+        batch, time
+    )
     reference = base.clone()
     out = chunk_swap(base)
     assert out.data_ptr() == base.data_ptr()
-    assert torch.allclose(torch.sort(out, dim=1).values, torch.sort(reference, dim=1).values)
+    assert torch.allclose(
+        torch.sort(out, dim=1).values, torch.sort(reference, dim=1).values
+    )
 
 
 def test_freq_drop_no_nan_and_inplace():
@@ -55,7 +70,9 @@ def test_add_noise_with_stub(monkeypatch):
     def _stub_noise_like(ref, sample_rate, noise_dir):
         return torch.zeros_like(ref)
 
-    monkeypatch.setattr("wav2aug.gpu.noise_addition._sample_noise_like", _stub_noise_like)
+    monkeypatch.setattr(
+        "wav2aug.gpu.noise_addition._sample_noise_like", _stub_noise_like
+    )
     waveforms = torch.ones(2, 128, device="cuda", dtype=torch.float32)
     ptr = waveforms.data_ptr()
     out = add_noise(
@@ -86,9 +103,11 @@ def test_invert_polarity_flips_when_prob_one():
 
 
 def test_speed_perturb_adjusts_length():
-    waveforms = torch.linspace(0, 1, steps=200, device="cuda", dtype=torch.float32).repeat(2, 1)
-    out = speed_perturb(waveforms, speed_changes=(0.5,))
-    expected_len = int(round(200 / 0.5))
+    waveforms = torch.linspace(
+        0, 1, steps=200, device="cuda", dtype=torch.float32
+    ).repeat(2, 1)
+    out = speed_perturb(waveforms, 16000, speed_changes=(0.5,))
+    expected_len = int(round(200 * 1 / 0.5))
     assert out.shape == (2, expected_len)
     assert out.device.type == "cuda"
 

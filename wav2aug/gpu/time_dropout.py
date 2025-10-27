@@ -19,6 +19,7 @@ def _scaled_bounds(sample_rate: int) -> tuple[int, int]:
         max_len = _CHUNK_SIZE_HIGH
     return min_len, max_len
 
+
 @torch.no_grad()
 def time_dropout(
     waveforms: torch.Tensor,
@@ -54,8 +55,12 @@ def time_dropout(
 
     min_len, max_len = _scaled_bounds(sample_rate)
     if sample_rate != _BASE_SAMPLE_RATE:
-        min_len = max(min_len, int(round(chunk_size_low * (sample_rate / _BASE_SAMPLE_RATE))))
-        max_len = max(min_len, int(round(chunk_size_high * (sample_rate / _BASE_SAMPLE_RATE))))
+        min_len = max(
+            min_len, int(round(chunk_size_low * (sample_rate / _BASE_SAMPLE_RATE)))
+        )
+        max_len = max(
+            min_len, int(round(chunk_size_high * (sample_rate / _BASE_SAMPLE_RATE)))
+        )
     else:
         min_len = max(min_len, chunk_size_low)
         max_len = max(min_len, chunk_size_high)

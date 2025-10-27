@@ -4,9 +4,17 @@ from typing import Callable, List
 
 import torch
 
-from wav2aug.gpu import (add_babble_noise, add_noise, chunk_swap, freq_drop,
-                         invert_polarity, rand_amp_clip, rand_amp_scale,
-                         speed_perturb, time_dropout)
+from wav2aug.gpu import (
+    add_babble_noise,
+    add_noise,
+    chunk_swap,
+    freq_drop,
+    invert_polarity,
+    rand_amp_clip,
+    rand_amp_scale,
+    speed_perturb,
+    time_dropout,
+)
 
 
 class Wav2Aug:
@@ -19,7 +27,9 @@ class Wav2Aug:
 
     def __init__(self, sample_rate: int) -> None:
         self.sample_rate = int(sample_rate)
-        self._base_ops: List[Callable[[torch.Tensor, torch.Tensor | None], torch.Tensor]] = [
+        self._base_ops: List[
+            Callable[[torch.Tensor, torch.Tensor | None], torch.Tensor]
+        ] = [
             lambda x, lengths: add_noise(x, self.sample_rate),
             lambda x, lengths: add_babble_noise(x),
             lambda x, lengths: chunk_swap(x),
@@ -27,8 +37,10 @@ class Wav2Aug:
             lambda x, lengths: invert_polarity(x),
             lambda x, lengths: rand_amp_clip(x),
             lambda x, lengths: rand_amp_scale(x),
-            lambda x, lengths: speed_perturb(x, sample_rate = self.sample_rate),
-            lambda x, lengths: time_dropout(x, sample_rate = self.sample_rate, lengths = lengths),
+            lambda x, lengths: speed_perturb(x, sample_rate=self.sample_rate),
+            lambda x, lengths: time_dropout(
+                x, sample_rate=self.sample_rate, lengths=lengths
+            ),
         ]
 
     @torch.no_grad()

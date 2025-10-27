@@ -94,7 +94,11 @@ def freq_drop(
         if drop.abs().sum() > 0:
             drop = drop / drop.abs().sum().clamp_min(1e-8)
         drop = torch.nan_to_num(drop, nan=0.0, posinf=0.0, neginf=0.0)
-        y = F.conv1d(waveforms[b:b+1].unsqueeze(1), drop.view(1,1,_FILTER_LEN), padding=_PAD).squeeze(1)
+        y = F.conv1d(
+            waveforms[b : b + 1].unsqueeze(1),
+            drop.view(1, 1, _FILTER_LEN),
+            padding=_PAD,
+        ).squeeze(1)
         if clamp_abs is not None and clamp_abs > 0:
             y = y.clamp_(-clamp_abs, clamp_abs)
         y = torch.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)

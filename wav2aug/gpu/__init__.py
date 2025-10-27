@@ -9,14 +9,14 @@ from .time_dropout import time_dropout
 from .wav2aug import Wav2Aug
 
 __all__ = [
-	"rand_amp_clip",
-	"rand_amp_scale",
-	"chunk_swap",
-	"freq_drop",
-	"add_noise",
-	"add_babble_noise",
-	"invert_polarity",
-	"speed_perturb",
-	"time_dropout",
-	"Wav2Aug",
+    "rand_amp_clip",
+    "rand_amp_scale",
+    "chunk_swap",
+    "freq_drop",
+    "add_noise",
+    "add_babble_noise",
+    "invert_polarity",
+    "speed_perturb",
+    "time_dropout",
+    "Wav2Aug",
 ]

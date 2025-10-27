@@ -8,6 +8,7 @@ class PackSpec:
     url: str
     sha256: str | None = None
 
+
 POINTSOURCE = PackSpec(
     name="pointsource_noises",
     version="main",

@@ -42,8 +42,8 @@ def speed_perturb(
 
     resampled = torchaudio.functional.resample(
         waveforms,
-        orig_freq = sample_rate,
-        new_freq = sample_rate * speed,
+        orig_freq=sample_rate,
+        new_freq=int(sample_rate * 1 / speed),
     ).to(waveforms.device)
 
     return resampled

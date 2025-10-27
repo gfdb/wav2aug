@@ -1,4 +1,3 @@
-
 import os
 from typing import Optional
 
@@ -8,25 +7,6 @@ import torch.nn.functional as F
 _EPS = 1e-14
 _AUDIO_EXTS = {".wav", ".flac", ".mp3", ".ogg", ".opus", ".m4a"}
 
-
-def _sample_unique_sorted_floyd(M: int, N: int) -> torch.Tensor:
-    """Sample N unique integers from [0, M) in sorted order using Floyd's algorithm.
-    
-    Args:
-        M: Upper bound (exclusive) for sampling range.
-        N: Number of unique integers to sample.
-        
-    Returns:
-        Sorted tensor of N unique integers.
-    """
-    S: set[int] = set()
-    for j in range(M - N, M):
-        r = int(torch.randint(0, j + 1, ()).item())
-        if r in S:
-            S.add(j)
-        else:
-            S.add(r)
-    return torch.tensor(sorted(S), dtype=torch.long)
 
 @torch.no_grad()
 def apply_snr_and_mix(
@@ -73,7 +53,27 @@ def apply_snr_and_mix(
 
     return view
 
-def _sample_noise_like(x: torch.Tensor, sr: int, noise_dir: Optional[str]) -> torch.Tensor:
+
+def _list_audio_files(root: str) -> list[str]:
+    """List all audio files recursively in directory.
+
+    Args:
+        root: Root directory path to search.
+
+    Returns:
+        Sorted list of audio file paths.
+    """
+    out = []
+    for d, _, files in os.walk(root):
+        for fn in files:
+            if os.path.splitext(fn)[1].lower() in _AUDIO_EXTS:
+                out.append(os.path.join(d, fn))
+    return sorted(out)
+
+
+def _sample_noise_like(
+    x: torch.Tensor, sr: int, noise_dir: Optional[str]
+) -> torch.Tensor:
     """Sample noise matching waveform shape.
 
     Loads random audio file from noise_dir or generates random noise if no
@@ -97,6 +97,7 @@ def _sample_noise_like(x: torch.Tensor, sr: int, noise_dir: Optional[str]) -> to
 
     idx = int(torch.randint(0, len(files), ()))
     from torchcodec.decoders import AudioDecoder
+
     dec = AudioDecoder(files[idx], sample_rate=int(sr))
     samp = dec.get_all_samples()
     n = samp.data.contiguous().to(dtype=x.dtype)
@@ -109,23 +110,7 @@ def _sample_noise_like(x: torch.Tensor, sr: int, noise_dir: Optional[str]) -> to
     nT = n.size(1)
     if nT > T:
         off = int(torch.randint(0, nT - T + 1, ()))
-        n = n[:, off:off+T]
+        n = n[:, off : off + T]
     elif nT < T:
         n = F.pad(n, (0, T - nT))
     return n
-
-def _list_audio_files(root: str) -> list[str]:
-    """List all audio files recursively in directory.
-    
-    Args:
-        root: Root directory path to search.
-        
-    Returns:
-        Sorted list of audio file paths.
-    """
-    out = []
-    for d, _, files in os.walk(root):
-        for fn in files:
-            if os.path.splitext(fn)[1].lower() in _AUDIO_EXTS:
-                out.append(os.path.join(d, fn))
-    return sorted(out)
