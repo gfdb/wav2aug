@@ -17,7 +17,7 @@ class Wav2Aug:
     for a lean training-time path.
     """
 
-    def __init__(self, sample_rate: int, disable: int = None) -> None:
+    def __init__(self, sample_rate: int) -> None:
         self.sample_rate = int(sample_rate)
         self._base_ops: List[Callable[[torch.Tensor, torch.Tensor | None], torch.Tensor]] = [
             lambda x, lengths: add_noise(x, self.sample_rate),
@@ -30,24 +30,6 @@ class Wav2Aug:
             lambda x, lengths: speed_perturb(x, sample_rate = self.sample_rate),
             lambda x, lengths: time_dropout(x, sample_rate = self.sample_rate, lengths = lengths),
         ]
-        self._op_names: List[str] = [
-            "add_noise",
-            "add_babble_noise",
-            "chunk_swap",
-            "freq_drop",
-            "invert_polarity",
-            "rand_amp_clip",
-            "rand_amp_scale",
-            "speed_perturb",
-            "time_dropout",
-        ]
-
-        if disable is not None:
-            print(f'disabling {self._op_names[disable]}')
-
-            del self._base_ops[disable]
-            del self._op_names[disable]
-
 
     @torch.no_grad()
     def __call__(
