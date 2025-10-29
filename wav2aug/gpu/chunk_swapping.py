@@ -14,9 +14,8 @@ def chunk_swap(
 ) -> torch.Tensor:
     """Swap non-overlapping chunks for each waveform in the batch.
 
-    The GPU implementation mirrors the CPU behaviour by selecting four
-    non-overlapping segments of length ``ceil(0.01 * time)`` and permuting
-    them independently per waveform.
+    The GPU implementation selects four non-overlapping segments of length
+    ``ceil(0.01 * time)`` and permutes them independently per waveform.
 
     Args:
         waveforms: Tensor of shape [batch, time] on CUDA device.

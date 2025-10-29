@@ -16,6 +16,7 @@ from wav2aug.gpu import (
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+
 def _waveforms(
     batch: int = 3, time: int = 256, *, dtype: torch.dtype = torch.float32
 ) -> torch.Tensor:
