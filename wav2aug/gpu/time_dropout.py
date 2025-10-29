@@ -1,0 +1,138 @@
+from __future__ import annotations
+
+import torch
+
+
+def _scaled_bounds(
+    sample_rate: int,
+    *,
+    chunk_size_low: int,
+    chunk_size_high: int,
+    base_sample_rate: int,
+) -> tuple[int, int]:
+    """Return chunk length bounds scaled to the provided sample rate."""
+
+    if sample_rate != base_sample_rate:
+        scale = float(sample_rate) / float(base_sample_rate)
+        min_len = max(1, int(round(chunk_size_low * scale)))
+        max_len = max(min_len, int(round(chunk_size_high * scale)))
+    else:
+        min_len = chunk_size_low
+        max_len = chunk_size_high
+    return min_len, max_len
+
+
+@torch.no_grad()
+def time_dropout(
+    waveforms: torch.Tensor,
+    sample_rate: int = 16_000,
+    *,
+    lengths: torch.Tensor = None,
+    chunk_count_low: int = 1,
+    chunk_count_high: int = 8,
+    chunk_size_low: int = 0,
+    chunk_size_high: int = 4000,
+    base_sample_rate: int = 16_000,
+) -> torch.Tensor:
+    """Apply time dropout with per-sample independent random zeroed segments.
+
+    Each waveform draws its own number of chunks (uniform integer in
+    [chunk_count_low, chunk_count_high]), random lengths in the (scaled)
+    range [chunk_size_low, chunk_size_high], and random start positions.
+    Segments are zeroed only within the valid portion of each waveform.
+
+    Args:
+        waveforms (torch.Tensor): The input waveforms. Shape [batch, time].
+        lengths (torch.Tensor): The valid lengths of each waveform. Shape [batch].
+        sample_rate (int, optional): The sample rate of the audio. Defaults to 16_000.
+        chunk_count_low (int, optional): The minimum number of chunks to drop. Defaults to 1.
+        chunk_count_high (int, optional): The maximum number of chunks to drop. Defaults to 8.
+        chunk_size_low (int, optional): The minimum size of each chunk. Defaults to 0.
+        chunk_size_high (int, optional): The maximum size of each chunk. Defaults to 4000.
+        base_sample_rate (int, optional): Reference sample rate used for scaling chunk lengths. Defaults to 16_000.
+
+    Raises:
+        AssertionError: If the input waveforms are not 2D or if the batch size is 0.
+        ValueError: If chunk_count_low is negative or if chunk_count_high is less than chunk_count_low.
+        ValueError: If chunk_size_low is negative or if chunk_size_high is less than chunk_size_low.
+
+    Returns:
+        torch.Tensor: The waveforms with time dropout applied.
+    """
+
+    if waveforms.ndim != 2:
+        raise AssertionError("expected waveforms with shape [batch, time]")
+
+    if lengths is None:
+        lengths = torch.ones(
+            (waveforms.size(0),), device=waveforms.device, dtype=torch.float32
+        )
+
+    batch, total_time = waveforms.shape
+    if batch == 0 or total_time == 0:
+        return waveforms
+
+    if chunk_count_low < 0:
+        raise ValueError("chunk_count_low must be non-negative")
+    if chunk_count_high < chunk_count_low:
+        raise ValueError("chunk_count_high must be >= chunk_count_low")
+    if chunk_size_low < 0:
+        raise ValueError("chunk_size_low must be non-negative")
+    if chunk_size_high < chunk_size_low:
+        raise ValueError("chunk_size_high must be >= chunk_size_low")
+
+    # absolute valid samples per row
+    valid_lengths = (lengths * total_time).to(torch.long).clamp_(0, total_time)
+
+    min_len, max_len = _scaled_bounds(
+        sample_rate,
+        chunk_size_low=chunk_size_low,
+        chunk_size_high=chunk_size_high,
+        base_sample_rate=base_sample_rate,
+    )
+
+    max_len = min(max_len, total_time)
+    min_len = min(min_len, max_len)
+    if chunk_count_high == 0 or max_len == 0:
+        return waveforms
+
+    device = waveforms.device
+
+    for b in range(batch):
+        row_valid = int(valid_lengths[b].item())
+        if row_valid <= 0:
+            continue
+
+        chunk_count = int(
+            torch.randint(
+                chunk_count_low,
+                chunk_count_high + 1,
+                (),
+                device=device,
+            ).item()
+        )
+        if chunk_count == 0:
+            continue
+
+        lengths_b = torch.randint(
+            min_len,
+            max_len + 1,
+            (chunk_count,),
+            device=device,
+        )
+        lengths_b = torch.clamp(lengths_b, max=row_valid)
+
+        rand = torch.rand((chunk_count,), device=device)
+        start_max = (row_valid - lengths_b).clamp_min(0)
+        starts_b = torch.floor(rand * (start_max + 1).to(rand.dtype)).to(torch.long)
+
+        for i in range(chunk_count):
+            s = int(starts_b[i].item())
+            e = int((starts_b[i] + lengths_b[i]).item())
+            if e > s:
+                waveforms[b, s:e] = 0.0
+
+    return waveforms
+
+
+__all__ = ["time_dropout"]

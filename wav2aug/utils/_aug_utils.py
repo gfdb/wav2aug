@@ -1,48 +1,14 @@
-
 import os
+from typing import Optional
 
 import torch
+import torch.nn.functional as F
 
 _EPS = 1e-14
 _AUDIO_EXTS = {".wav", ".flac", ".mp3", ".ogg", ".opus", ".m4a"}
 
 
 @torch.no_grad()
-def _sample_unique_sorted_floyd(M: int, N: int) -> torch.Tensor:
-    """Sample N unique integers from [0, M) in sorted order using Floyd's algorithm.
-    
-    Args:
-        M: Upper bound (exclusive) for sampling range.
-        N: Number of unique integers to sample.
-        
-    Returns:
-        Sorted tensor of N unique integers.
-    """
-    S: set[int] = set()
-    for j in range(M - N, M):
-        r = int(torch.randint(0, j + 1, ()).item())
-        if r in S:
-            S.add(j)
-        else:
-            S.add(r)
-    return torch.tensor(sorted(S), dtype=torch.long)
-
-def _match_channels(x: torch.Tensor, C: int) -> torch.Tensor:
-    """Match tensor to target channel count.
-    
-    Args:
-        x: Input tensor in [C, T] format.
-        C: Target channel count.
-        
-    Returns:
-        Tensor with channel dimension adjusted to C channels.
-    """
-    if x.size(0) == C:
-        return x
-    if x.size(0) == 1 and C > 1:
-        return x.repeat(C, 1)
-    return x.mean(dim=0, keepdim=True).repeat(C, 1)
-
 def apply_snr_and_mix(
     view: torch.Tensor,
     noise: torch.Tensor,
@@ -87,12 +53,13 @@ def apply_snr_and_mix(
 
     return view
 
+
 def _list_audio_files(root: str) -> list[str]:
     """List all audio files recursively in directory.
-    
+
     Args:
         root: Root directory path to search.
-        
+
     Returns:
         Sorted list of audio file paths.
     """
@@ -102,3 +69,48 @@ def _list_audio_files(root: str) -> list[str]:
             if os.path.splitext(fn)[1].lower() in _AUDIO_EXTS:
                 out.append(os.path.join(d, fn))
     return sorted(out)
+
+
+def _sample_noise_like(
+    x: torch.Tensor, sr: int, noise_dir: Optional[str]
+) -> torch.Tensor:
+    """Sample noise matching waveform shape.
+
+    Loads random audio file from noise_dir or generates random noise if no
+    directory provided. Resamples and crops/pads to match input dimensions.
+
+    Args:
+        x: Reference tensor in [C, T] format for shape matching.
+        sr: Target sample rate for resampling noise files.
+        noise_dir: Directory containing noise files. If None, generates random noise.
+
+    Returns:
+        Noise tensor with same shape as x.
+    """
+    C, T = x.shape
+    if not noise_dir:
+        return torch.randn(C, T, dtype=x.dtype)
+
+    files = _list_audio_files(noise_dir)
+    if not files:
+        return torch.randn(C, T, dtype=x.dtype)
+
+    idx = int(torch.randint(0, len(files), ()))
+    from torchcodec.decoders import AudioDecoder
+
+    dec = AudioDecoder(files[idx], sample_rate=int(sr))
+    samp = dec.get_all_samples()
+    n = samp.data.contiguous().to(dtype=x.dtype)
+
+    if n.size(0) == 1 and C > 1:
+        n = n.repeat(C, 1)
+    elif n.size(0) != C:
+        n = n.mean(dim=0, keepdim=True).repeat(C, 1)
+
+    nT = n.size(1)
+    if nT > T:
+        off = int(torch.randint(0, nT - T + 1, ()))
+        n = n[:, off : off + T]
+    elif nT < T:
+        n = F.pad(n, (0, T - nT))
+    return n
