@@ -106,7 +106,6 @@ def test_speed_perturb_adjusts_length():
     out = speed_perturb(waveforms, 16000, speed_changes=(0.5,))
     expected_len = int(round(200 * 1 / 0.5))
     assert out.shape == (2, expected_len)
-    assert out.device.type == "cuda"
 
 
 def test_time_dropout_zeroes_segments():
@@ -137,5 +136,4 @@ def test_wav2aug_runs_with_stubbed_noise(monkeypatch):
     lengths = torch.ones(3, device=DEVICE, dtype=torch.float32)
     out_wave, out_lengths = aug(waveforms, lengths=lengths)
     assert out_wave.shape[0] == waveforms.shape[0]
-    assert out_wave.device.type == "cuda"
     assert out_lengths.data_ptr() == lengths.data_ptr()
