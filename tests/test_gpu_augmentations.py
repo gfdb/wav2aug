@@ -14,17 +14,13 @@ from wav2aug.gpu import (
     time_dropout,
 )
 
-pytestmark = pytest.mark.skipif(
-    not torch.cuda.is_available(),
-    reason="CUDA device is required for GPU augmentation tests",
-)
-
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 def _waveforms(
     batch: int = 3, time: int = 256, *, dtype: torch.dtype = torch.float32
 ) -> torch.Tensor:
     torch.manual_seed(0)
-    return torch.randn(batch, time, device="cuda", dtype=dtype)
+    return torch.randn(batch, time, device=DEVICE, dtype=dtype)
 
 
 def test_rand_amp_clip_inplace_preserves_shape():
@@ -47,7 +43,7 @@ def test_rand_amp_scale_inplace_preserves_shape():
 
 def test_chunk_swap_outputs_permutation():
     batch, time = 2, 400
-    base = torch.arange(batch * time, device="cuda", dtype=torch.float32).view(
+    base = torch.arange(batch * time, device=DEVICE, dtype=torch.float32).view(
         batch, time
     )
     reference = base.clone()
@@ -73,7 +69,7 @@ def test_add_noise_with_stub(monkeypatch):
     monkeypatch.setattr(
         "wav2aug.gpu.noise_addition._sample_noise_like", _stub_noise_like
     )
-    waveforms = torch.ones(2, 128, device="cuda", dtype=torch.float32)
+    waveforms = torch.ones(2, 128, device=DEVICE, dtype=torch.float32)
     ptr = waveforms.data_ptr()
     out = add_noise(
         waveforms,
@@ -88,7 +84,7 @@ def test_add_noise_with_stub(monkeypatch):
 
 
 def test_add_babble_noise_identity_for_singleton_batch():
-    waveforms = torch.full((1, 64), 2.0, device="cuda", dtype=torch.float32)
+    waveforms = torch.full((1, 64), 2.0, device=DEVICE, dtype=torch.float32)
     ptr = waveforms.data_ptr()
     out = add_babble_noise(waveforms, snr_low=0.0, snr_high=0.0)
     assert out.data_ptr() == ptr
@@ -104,7 +100,7 @@ def test_invert_polarity_flips_when_prob_one():
 
 def test_speed_perturb_adjusts_length():
     waveforms = torch.linspace(
-        0, 1, steps=200, device="cuda", dtype=torch.float32
+        0, 1, steps=200, device=DEVICE, dtype=torch.float32
     ).repeat(2, 1)
     out = speed_perturb(waveforms, 16000, speed_changes=(0.5,))
     expected_len = int(round(200 * 1 / 0.5))
@@ -113,8 +109,8 @@ def test_speed_perturb_adjusts_length():
 
 
 def test_time_dropout_zeroes_segments():
-    waveforms = torch.ones(2, 64, device="cuda", dtype=torch.float32)
-    lengths = torch.ones(2, device="cuda", dtype=torch.float32)
+    waveforms = torch.ones(2, 64, device=DEVICE, dtype=torch.float32)
+    lengths = torch.ones(2, device=DEVICE, dtype=torch.float32)
     ptr = waveforms.data_ptr()
     out = time_dropout(
         waveforms,
@@ -137,7 +133,7 @@ def test_wav2aug_runs_with_stubbed_noise(monkeypatch):
 
     aug = Wav2Aug(sample_rate=16_000)
     waveforms = _waveforms(batch=3, time=256)
-    lengths = torch.ones(3, device="cuda", dtype=torch.float32)
+    lengths = torch.ones(3, device=DEVICE, dtype=torch.float32)
     out_wave, out_lengths = aug(waveforms, lengths=lengths)
     assert out_wave.shape[0] == waveforms.shape[0]
     assert out_wave.device.type == "cuda"
