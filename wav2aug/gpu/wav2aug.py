@@ -4,9 +4,17 @@ from typing import Callable, List
 
 import torch
 
-from wav2aug.gpu import (add_babble_noise, add_noise, chunk_swap, freq_drop,
-                         invert_polarity, rand_amp_clip, rand_amp_scale,
-                         speed_perturb, time_dropout)
+from wav2aug.gpu import (
+    add_babble_noise,
+    add_noise,
+    chunk_swap,
+    freq_drop,
+    invert_polarity,
+    rand_amp_clip,
+    rand_amp_scale,
+    speed_perturb,
+    time_dropout,
+)
 
 
 class Wav2Aug:
