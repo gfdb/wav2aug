@@ -15,6 +15,22 @@ def _mix_noise(
     snr_low: float,
     snr_high: float,
 ) -> torch.Tensor:
+    """Mix noise into the waveforms at a specified SNR.
+
+    Args:
+        waveforms (torch.Tensor): The input waveforms. Shape [batch, time].
+        noise (torch.Tensor): The noise waveforms to mix in. Shape [batch, time].
+        snr_low (float): The minimum SNR (Signal-to-Noise Ratio) in dB.
+        snr_high (float): The maximum SNR (Signal-to-Noise Ratio) in dB.
+
+    Raises:
+        AssertionError: If waveforms and noise are not 2D shaped [batch, time].
+        AssertionError: If waveforms and noise do not have identical shapes.
+        AssertionError: If waveforms and noise are not on the CUDA device.
+
+    Returns:
+        torch.Tensor: The waveforms with mixed noise.
+    """
     if waveforms.ndim != 2 or noise.ndim != 2:
         raise AssertionError("expected waveforms and noise shaped [batch, time]")
     if waveforms.shape != noise.shape:
@@ -52,7 +68,24 @@ def add_noise(
     download: bool = True,
     pack: str = "pointsource_noises",
 ) -> torch.Tensor:
-    """Add point-source noise to each waveform in the batch."""
+    """Add point-source noise to each waveform in the batch.
+
+    Args:
+        waveforms (torch.Tensor): The input waveforms. Shape [batch, time].
+        sample_rate (int): The sample rate of the audio.
+        snr_low (float, optional): The minimum SNR (Signal-to-Noise Ratio) in dB. Defaults to 0.0.
+        snr_high (float, optional): The maximum SNR (Signal-to-Noise Ratio) in dB. Defaults to 10.0.
+        noise_dir (str | None, optional): The directory containing noise files. Defaults to None.
+        download (bool, optional): Whether to download noise files if not found. Defaults to True.
+        pack (str, optional): The name of the noise pack to use. Defaults to "pointsource_noises".
+
+    Raises:
+        AssertionError: If waveforms are not 2D shaped [batch, time].
+        AssertionError: If waveforms are not on the CUDA device.
+
+    Returns:
+        torch.Tensor: The waveforms with point-source noise added.
+    """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms shaped [batch, time]")
     if waveforms.device.type != "cuda":
@@ -94,7 +127,20 @@ def add_babble_noise(
     snr_low: float = 0.0,
     snr_high: float = 20.0,
 ) -> torch.Tensor:
-    """Add babble noise derived from the batch sum."""
+    """Add babble noise derived from the batch sum.
+
+    Args:
+        waveforms (torch.Tensor): The input waveforms. Shape [batch, time].
+        snr_low (float, optional): The minimum SNR (Signal-to-Noise Ratio) in dB. Defaults to 0.0.
+        snr_high (float, optional): The maximum SNR (Signal-to-Noise Ratio) in dB. Defaults to 20.0.
+
+    Raises:
+        AssertionError: If waveforms are not 2D shaped [batch, time].
+        AssertionError: If waveforms are not on the CUDA device.
+
+    Returns:
+        torch.Tensor: The waveforms with babble noise added.
+    """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms shaped [batch, time]")
     if waveforms.device.type != "cuda":

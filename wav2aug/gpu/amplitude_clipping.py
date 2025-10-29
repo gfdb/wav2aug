@@ -6,6 +6,7 @@ import torch
 @torch.no_grad()
 def rand_amp_clip(
     waveforms: torch.Tensor,
+    *,
     clip_low: float = 0.0,
     clip_high: float = 0.75,
     eps: float = 1e-12,

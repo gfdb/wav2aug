@@ -54,7 +54,7 @@ class Wav2Aug:
         if waveforms.ndim != 2:
             raise AssertionError("expected waveforms shaped [batch, time]")
         if waveforms.device.type != "cuda":
-            raise AssertionError("Wav2Aug expects CUDA tensors")
+            raise AssertionError("wav2aug.gpu expects CUDA tensors")
         if waveforms.numel() == 0:
             return waveforms if lengths is None else (waveforms, lengths)
 

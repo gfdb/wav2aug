@@ -37,7 +37,25 @@ def time_dropout(
     [chunk_count_low, chunk_count_high]), random lengths in the (scaled)
     range [chunk_size_low, chunk_size_high], and random start positions.
     Segments are zeroed only within the valid portion of each waveform.
+
+    Args:
+        waveforms (torch.Tensor): The input waveforms. Shape [batch, time].
+        lengths (torch.Tensor): The valid lengths of each waveform. Shape [batch].
+        sample_rate (int, optional): The sample rate of the audio. Defaults to _BASE_SAMPLE_RATE.
+        chunk_count_low (int, optional): The minimum number of chunks to drop. Defaults to _CHUNK_COUNT_LOW.
+        chunk_count_high (int, optional): The maximum number of chunks to drop. Defaults to _CHUNK_COUNT_HIGH.
+        chunk_size_low (int, optional): The minimum size of each chunk. Defaults to _CHUNK_SIZE_LOW.
+        chunk_size_high (int, optional): The maximum size of each chunk. Defaults to _CHUNK_SIZE_HIGH.
+
+    Raises:
+        AssertionError: If the input waveforms are not 2D or if the batch size is 0.
+        ValueError: If chunk_count_low is negative or if chunk_count_high is less than chunk_count_low.
+        ValueError: If chunk_size_low is negative or if chunk_size_high is less than chunk_size_low.
+
+    Returns:
+        torch.Tensor: The waveforms with time dropout applied.
     """
+
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms with shape [batch, time]")
 

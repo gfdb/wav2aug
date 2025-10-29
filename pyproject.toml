@@ -37,6 +37,9 @@ test = [
     "pytest>=8",
     "pytest-cov",
 ]
+dev = [
+  "black>=23.1.0,<25",
+]
 
 [project.urls]
 Homepage = "https://github.com/gfdb/wav2aug"

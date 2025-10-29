@@ -12,6 +12,18 @@ def invert_polarity(
 
     Each waveform is independently flipped with probability ``prob``.
     Previously a single batch-wide decision could flip all samples.
+
+    Args:
+        waveforms (torch.Tensor): The input waveforms. Shape [batch, time].
+        prob (float, optional): The probability of flipping each waveform. Defaults to 0.6.
+
+    Raises:
+        AssertionError: If waveforms are not 2D shaped [batch, time].
+        AssertionError: If waveforms are not on the CUDA device.
+        AssertionError: If waveforms are empty.
+
+    Returns:
+        torch.Tensor: The waveforms with inverted polarity.
     """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms shaped [batch, time]")

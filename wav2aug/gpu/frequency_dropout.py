@@ -12,6 +12,14 @@ _BLACKMAN = torch.blackman_window(_FILTER_LEN, periodic=True, dtype=torch.float3
 
 
 def _sinc(x: torch.Tensor) -> torch.Tensor:
+    """Compute the sinc function.
+
+    Args:
+        x (torch.Tensor): The input tensor.
+
+    Returns:
+        torch.Tensor: The output tensor with the sinc function applied.
+    """
     return torch.where(x.abs() < 1e-8, torch.ones_like(x), torch.sin(x) / x)
 
 
@@ -28,13 +36,21 @@ def freq_drop(
 ) -> torch.Tensor:
     """Frequency dropout with per-sample independent notch filter stacks.
 
-    Each waveform builds its own randomized multi-notch kernel instead of
-    reusing a single shared filter for the batch.
+    Args:
+        waveforms (torch.Tensor): The input waveforms. Shape [batch, time].
+        bound_low (float, optional): The lower bound for the frequency dropout. Defaults to 1e-12.
+        bound_high (float, optional): The upper bound for the frequency dropout. Defaults to 1.0.
+        band_count_low (int, optional): The minimum number of bands for dropout. Defaults to 1.
+        band_count_high (int, optional): The maximum number of bands for dropout. Defaults to 8.
+        band_width (float, optional): The width of each band for dropout. Defaults to 0.10.
+        clamp_abs (float, optional): The absolute clamp value for the output. Defaults to 8.0.
 
-    Stabilization additions retained:
-    - Normalize each intermediate kernel
-    - Final kernel L1 normalization + nan_to_num
-    - Clamp output amplitude to +/- clamp_abs
+    Raises:
+        AssertionError: If waveforms are not 2D shaped [batch, time].
+        AssertionError: If waveforms are not on the CUDA device.
+
+    Returns:
+        torch.Tensor: The waveforms with frequency dropout applied.
     """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms shaped [batch, time]")

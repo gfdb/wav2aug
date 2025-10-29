@@ -6,6 +6,7 @@ import torch
 @torch.no_grad()
 def rand_amp_scale(
     waveforms: torch.Tensor,
+    *,
     amp_low: float = 0.05,
     amp_high: float = 0.5,
 ) -> torch.Tensor:
