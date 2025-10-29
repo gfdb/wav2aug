@@ -9,6 +9,7 @@ A minimalistic PyTorch-based audio augmentation library for speech and audio aug
 * **Minimal dependencies**: we only rely on PyTorch, torchcodec, and torchaudio.
 * **9 core augmentations**: amplitude scaling/clipping, noise addition, frequency dropout, polarity inversion, chunk swapping, speed perturbation, time dropout, and babble noise.
 * **Simplicity**: just install and start augmenting!
+* **Randomness**: All stochastic ops use PyTorch RNGs. Set a single seed and be done, e.g. torch.manual_seed(0); torch.cuda.manual_seed_all(0)
 
 ## 📦 Installation
 

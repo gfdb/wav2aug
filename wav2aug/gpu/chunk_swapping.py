@@ -14,11 +14,11 @@ def chunk_swap(
 ) -> torch.Tensor:
     """Swap non-overlapping chunks for each waveform in the batch.
 
-    The GPU implementation selects four non-overlapping segments of length
+    The implementation selects four non-overlapping segments of length
     ``ceil(0.01 * time)`` and permutes them independently per waveform.
 
     Args:
-        waveforms: Tensor of shape [batch, time] on CUDA device.
+        waveforms: Tensor of shape [batch, time].
 
     Returns:
         The input ``waveforms`` tensor, modified in-place.
@@ -28,8 +28,6 @@ def chunk_swap(
     """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms shaped [batch, time]")
-    if waveforms.device.type != "cuda":
-        raise AssertionError("chunk_swap expects CUDA tensors")
 
     batch, total_time = waveforms.shape
     if batch == 0 or total_time == 0:

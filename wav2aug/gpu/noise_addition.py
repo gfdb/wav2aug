@@ -26,7 +26,6 @@ def _mix_noise(
     Raises:
         AssertionError: If waveforms and noise are not 2D shaped [batch, time].
         AssertionError: If waveforms and noise do not have identical shapes.
-        AssertionError: If waveforms and noise are not on the CUDA device.
 
     Returns:
         torch.Tensor: The waveforms with mixed noise.
@@ -35,8 +34,6 @@ def _mix_noise(
         raise AssertionError("expected waveforms and noise shaped [batch, time]")
     if waveforms.shape != noise.shape:
         raise AssertionError("waveforms and noise must have identical shapes")
-    if waveforms.device.type != "cuda" or noise.device.type != "cuda":
-        raise AssertionError("noise mixing expects CUDA tensors")
 
     if waveforms.numel() == 0:
         return waveforms
@@ -81,15 +78,12 @@ def add_noise(
 
     Raises:
         AssertionError: If waveforms are not 2D shaped [batch, time].
-        AssertionError: If waveforms are not on the CUDA device.
 
     Returns:
         torch.Tensor: The waveforms with point-source noise added.
     """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms shaped [batch, time]")
-    if waveforms.device.type != "cuda":
-        raise AssertionError("add_noise expects CUDA tensors")
 
     if waveforms.numel() == 0:
         return waveforms
@@ -136,15 +130,13 @@ def add_babble_noise(
 
     Raises:
         AssertionError: If waveforms are not 2D shaped [batch, time].
-        AssertionError: If waveforms are not on the CUDA device.
 
     Returns:
         torch.Tensor: The waveforms with babble noise added.
     """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms shaped [batch, time]")
-    if waveforms.device.type != "cuda":
-        raise AssertionError("add_babble_noise expects CUDA tensors")
+
     if waveforms.numel() == 0:
         return waveforms
 

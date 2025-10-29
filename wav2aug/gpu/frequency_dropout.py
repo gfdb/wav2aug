@@ -54,8 +54,6 @@ def freq_drop(
     """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms shaped [batch, time]")
-    if waveforms.device.type != "cuda":
-        raise AssertionError("freq_drop expects CUDA tensors")
 
     batch, total_time = waveforms.shape
     if batch == 0 or total_time == 0:

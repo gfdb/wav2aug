@@ -4,26 +4,13 @@ from typing import Callable, List
 
 import torch
 
-from wav2aug.gpu import (
-    add_babble_noise,
-    add_noise,
-    chunk_swap,
-    freq_drop,
-    invert_polarity,
-    rand_amp_clip,
-    rand_amp_scale,
-    speed_perturb,
-    time_dropout,
-)
+from wav2aug.gpu import (add_babble_noise, add_noise, chunk_swap, freq_drop,
+                         invert_polarity, rand_amp_clip, rand_amp_scale,
+                         speed_perturb, time_dropout)
 
 
 class Wav2Aug:
-    """Apply two random GPU augmentations to a batch of waveforms.
-
-    All augmentation functions sample parameters independently per waveform
-    (per-sample randomness). Debug/stat/renorm features have been stripped
-    for a lean training-time path.
-    """
+    """Applies two random augmentations to a batch of waveforms when called."""
 
     def __init__(self, sample_rate: int) -> None:
         self.sample_rate = int(sample_rate)
@@ -50,11 +37,23 @@ class Wav2Aug:
         *,
         lengths: torch.Tensor | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-        """Apply two distinct augmentations to the input batch."""
+        """Applies two distinct augmentations to the input batch.
+
+        Args:
+            waveforms (torch.Tensor): The input waveforms. Shape [batch, time].
+            lengths (torch.Tensor | None, optional): The lengths of each waveform. Defaults to None.
+
+        Raises:
+            AssertionError: If waveforms are not 2D shaped [batch, time].
+            AssertionError: If lengths is not None and has an invalid shape.
+            AssertionError: If lengths is not None and does not share the same device as waveforms.
+
+        Returns:
+            torch.Tensor | tuple[torch.Tensor, torch.Tensor]: The augmented waveforms and lengths (if provided).
+        """
         if waveforms.ndim != 2:
             raise AssertionError("expected waveforms shaped [batch, time]")
-        if waveforms.device.type != "cuda":
-            raise AssertionError("wav2aug.gpu expects CUDA tensors")
+
         if waveforms.numel() == 0:
             return waveforms if lengths is None else (waveforms, lengths)
 

@@ -19,7 +19,6 @@ def invert_polarity(
 
     Raises:
         AssertionError: If waveforms are not 2D shaped [batch, time].
-        AssertionError: If waveforms are not on the CUDA device.
         AssertionError: If waveforms are empty.
 
     Returns:
@@ -27,8 +26,7 @@ def invert_polarity(
     """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms shaped [batch, time]")
-    if waveforms.device.type != "cuda":
-        raise AssertionError("invert_polarity expects CUDA tensors")
+
     if waveforms.numel() == 0:
         return waveforms
 

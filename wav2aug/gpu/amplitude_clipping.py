@@ -11,10 +11,10 @@ def rand_amp_clip(
     clip_high: float = 0.75,
     eps: float = 1e-12,
 ) -> torch.Tensor:
-    """Random amplitude clipping for batched CUDA waveforms.
+    """Random amplitude clipping for batched waveforms.
 
     Args:
-        waveforms: Tensor of shape [batch, time] on CUDA device.
+        waveforms: Tensor of shape [batch, time].
         clip_low: Minimum clipping threshold as a fraction of peak.
         clip_high: Maximum clipping threshold as a fraction of peak.
         eps: Numerical floor to avoid division by zero.
@@ -24,8 +24,7 @@ def rand_amp_clip(
     """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms shaped [batch, time]")
-    if waveforms.device.type != "cuda":
-        raise AssertionError("rand_amp_clip expects CUDA tensors")
+
     if waveforms.numel() == 0:
         return waveforms
 
