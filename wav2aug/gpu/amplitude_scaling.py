@@ -12,6 +12,9 @@ def rand_amp_scale(
 ) -> torch.Tensor:
     """Random amplitude scaling for batched waveforms.
 
+    Normalizes each waveform to [-1, 1] then applies a random amplitude
+    scale factor.
+
     Args:
         waveforms: Tensor of shape [batch, time].
         amp_low: Minimum amplitude scale factor.
@@ -28,12 +31,17 @@ def rand_amp_scale(
 
     device = waveforms.device
     dtype = waveforms.dtype
-    denom = waveforms.abs().amax(dim=1, keepdim=True).clamp_min(1.0)
+
+    # Normalize to [-1, 1] by dividing by absolute max 
+    abs_max = waveforms.abs().amax(dim=1, keepdim=True)
+    # Avoid division by zero for silent signals
+    abs_max = abs_max.clamp_min(1e-14)
+    waveforms.div_(abs_max)
 
     # Per-sample scaling factors
     scales = torch.rand((waveforms.size(0), 1), device=device, dtype=dtype)
     scales = scales * (amp_high - amp_low) + amp_low
-    waveforms.mul_(scales / denom)
+    waveforms.mul_(scales)
     return waveforms
 
 

@@ -17,6 +17,10 @@ def _mix_noise(
 ) -> torch.Tensor:
     """Mix noise into the waveforms at a specified SNR.
 
+    Uses SpeechBrain's mixing formula which properly preserves signal
+    energy based on the target SNR. The formula computes amplitude factors
+    such that the resulting mixture has the desired signal-to-noise ratio.
+
     Args:
         waveforms (torch.Tensor): The input waveforms. Shape [batch, time].
         noise (torch.Tensor): The noise waveforms to mix in. Shape [batch, time].
@@ -41,16 +45,28 @@ def _mix_noise(
     device = waveforms.device
     dtype = waveforms.dtype
 
+    # Sample random SNR for each item in batch
     snr = torch.rand((waveforms.size(0), 1), device=device, dtype=dtype)
     snr = snr * (snr_high - snr_low) + snr_low
-    pow10 = torch.pow(torch.tensor(10.0, device=device, dtype=dtype), snr / 20.0)
-    factor = 1.0 / (pow10 + 1.0)
 
+    # Convert SNR from dB to amplitude ratio: 10^(SNR/20)
+    # Then compute noise amplitude factor: 1 / (amplitude_ratio + 1)
+    snr_amplitude = torch.pow(
+        torch.tensor(10.0, device=device, dtype=dtype), snr / 20.0
+    )
+    noise_amplitude_factor = 1.0 / (snr_amplitude + 1.0)
+
+    # Compute RMS amplitudes
     signal_rms = waveforms.pow(2).mean(dim=1, keepdim=True).sqrt().clamp_min(_EPS)
     noise_rms = noise.pow(2).mean(dim=1, keepdim=True).sqrt().clamp_min(_EPS)
 
-    waveforms.mul_(1.0 - factor)
-    waveforms.add_(noise * (factor * signal_rms / noise_rms))
+    # Scale the clean signal by (1 - noise_amplitude_factor)
+    waveforms.mul_(1.0 - noise_amplitude_factor)
+
+    # Compute target noise amplitude and scale noise accordingly
+    noise_scale = (noise_amplitude_factor * signal_rms) / noise_rms
+    waveforms.add_(noise * noise_scale)
+
     return waveforms
 
 
