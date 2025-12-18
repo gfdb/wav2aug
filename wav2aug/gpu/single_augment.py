@@ -6,9 +6,14 @@ from typing import Callable, Dict, Optional
 
 import torch
 
-from wav2aug.gpu import (add_babble_noise, add_noise, chunk_swap, freq_drop,
-                         invert_polarity, rand_amp_clip, rand_amp_scale,
-                         speed_perturb, time_dropout)
+from .amplitude_clipping import rand_amp_clip
+from .amplitude_scaling import rand_amp_scale
+from .chunk_swapping import chunk_swap
+from .frequency_dropout import freq_drop
+from .noise_addition import add_babble_noise, add_noise
+from .polarity_inversion import invert_polarity
+from .speed_perturbation import speed_perturb
+from .time_dropout import time_dropout
 
 # Mapping of augmentation names to their wav2aug implementations
 # Names match the speechbrain equivalents for easy comparison
