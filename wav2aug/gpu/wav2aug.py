@@ -70,9 +70,13 @@ class Wav2Aug:
             if lengths.device != waveforms.device:
                 raise AssertionError("lengths tensor must share device with waveforms")
 
-        perm = torch.randperm(len(self._base_ops), device=waveforms.device)
         take = min(2, len(self._base_ops))
-        indices = perm[:take].tolist()
+        indices = torch.randint(
+            low=0,
+            high=len(self._base_ops),
+            size=(take,),
+            device=waveforms.device,
+        ).tolist()
         for idx in indices:
             op = self._base_ops[idx]
             waveforms = op(waveforms, lengths)
