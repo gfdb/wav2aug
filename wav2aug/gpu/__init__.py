@@ -4,6 +4,7 @@ from .chunk_swapping import chunk_swap
 from .frequency_dropout import freq_drop
 from .noise_addition import add_babble_noise, add_noise
 from .polarity_inversion import invert_polarity
+from .single_augment import AUGMENTATION_REGISTRY, SingleAugment
 from .speed_perturbation import speed_perturb
 from .time_dropout import time_dropout
 from .wav2aug import Wav2Aug
@@ -19,4 +20,6 @@ __all__ = [
     "speed_perturb",
     "time_dropout",
     "Wav2Aug",
+    "SingleAugment",
+    "AUGMENTATION_REGISTRY",
 ]
