@@ -10,7 +10,7 @@ from .amplitude_clipping import rand_amp_clip
 from .amplitude_scaling import rand_amp_scale
 from .chunk_swapping import chunk_swap
 from .frequency_dropout import freq_drop
-from .noise_addition import add_babble_noise, add_noise
+from .noise_addition import NoiseLoader, add_babble_noise, add_noise
 from .polarity_inversion import invert_polarity
 from .speed_perturbation import speed_perturb
 from .time_dropout import time_dropout
@@ -77,6 +77,8 @@ class SingleAugment:
         # Noise addition params
         snr_low: float = 0.0,
         snr_high: float = 10.0,
+        noise_dir: str | None = None,
+        noise_num_workers: int = 2,
         # Speed perturbation params
         speed_changes: tuple = (0.9, 1.0, 1.1),
         # Frequency dropout params
@@ -108,7 +110,9 @@ class SingleAugment:
             sample_rate: Audio sample rate in Hz.
             augmentation_name: Name of the augmentation to apply.
                 Use 'none' or 'identity' to disable augmentation.
-            **kwargs: Additional parameters passed to specific augmentations.
+            noise_dir: Directory containing noise files for add_noise augmentation.
+                If None, will use the default cached noise pack (auto-downloaded if needed).
+            noise_num_workers: Number of background workers for noise loading.
         """
         self.sample_rate = int(sample_rate)
         self.augmentation_name = augmentation_name.lower().strip()
@@ -136,6 +140,16 @@ class SingleAugment:
             "babble_snr_high": babble_snr_high,
         }
         
+        # Initialize noise loader if needed for add_noise augmentation
+        self._noise_loader: NoiseLoader | None = None
+        if self.augmentation_name in ("add_noise",):
+            if noise_dir is None:
+                from wav2aug.data.fetch import ensure_pack
+                noise_dir = ensure_pack("pointsource_noises")
+            self._noise_loader = NoiseLoader(
+                noise_dir, sample_rate, num_workers=noise_num_workers
+            )
+        
         # Resolve the augmentation name
         if self.augmentation_name in ("none", "identity", ""):
             self._op: Optional[Callable] = None
@@ -157,8 +171,9 @@ class SingleAugment:
         sr = self.sample_rate
         
         if name == "add_noise":
+            loader = self._noise_loader
             return lambda x, lengths: add_noise(
-                x, sr, snr_low=p["snr_low"], snr_high=p["snr_high"]
+                x, loader, snr_low=p["snr_low"], snr_high=p["snr_high"]
             )
         elif name == "speed_perturb":
             return lambda x, lengths: speed_perturb(

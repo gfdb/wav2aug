@@ -4,28 +4,49 @@ from typing import Callable, List
 
 import torch
 
-from wav2aug.gpu import (
-    add_babble_noise,
-    add_noise,
-    chunk_swap,
-    freq_drop,
-    invert_polarity,
-    rand_amp_clip,
-    rand_amp_scale,
-    speed_perturb,
-    time_dropout,
-)
+from .amplitude_clipping import rand_amp_clip
+from .amplitude_scaling import rand_amp_scale
+from .chunk_swapping import chunk_swap
+from .frequency_dropout import freq_drop
+from .noise_addition import NoiseLoader, add_babble_noise, add_noise
+from .polarity_inversion import invert_polarity
+from .speed_perturbation import speed_perturb
+from .time_dropout import time_dropout
 
 
 class Wav2Aug:
     """Applies two random augmentations to a batch of waveforms when called."""
 
-    def __init__(self, sample_rate: int) -> None:
+    def __init__(
+        self,
+        sample_rate: int,
+        noise_dir: str | None = None,
+        noise_num_workers: int = 2,
+    ) -> None:
+        """Initialize Wav2Aug.
+        
+        Args:
+            sample_rate: Audio sample rate in Hz.
+            noise_dir: Directory containing noise files. If None, will use the
+                default cached noise pack (auto-downloaded if needed).
+            noise_num_workers: Number of background workers for noise loading.
+        """
         self.sample_rate = int(sample_rate)
+        
+        # Initialize noise loader
+        if noise_dir is None:
+            from wav2aug.data.fetch import ensure_pack
+            noise_dir = ensure_pack("pointsource_noises")
+        self._noise_loader = NoiseLoader(
+            noise_dir, sample_rate, num_workers=noise_num_workers
+        )
+        
         self._base_ops: List[
             Callable[[torch.Tensor, torch.Tensor | None], torch.Tensor]
         ] = [
-            lambda x, lengths: add_noise(x, self.sample_rate),
+            lambda x, lengths: add_noise(
+                x, self._noise_loader, snr_low=0.0, snr_high=10.0
+            ),
             lambda x, lengths: add_babble_noise(x),
             lambda x, lengths: chunk_swap(x),
             lambda x, lengths: freq_drop(x),

@@ -2,7 +2,7 @@ from .amplitude_clipping import rand_amp_clip
 from .amplitude_scaling import rand_amp_scale
 from .chunk_swapping import chunk_swap
 from .frequency_dropout import freq_drop
-from .noise_addition import add_babble_noise, add_noise
+from .noise_addition import NoiseLoader, add_babble_noise, add_noise
 from .polarity_inversion import invert_polarity
 from .single_augment import AUGMENTATION_REGISTRY, SingleAugment
 from .speed_perturbation import speed_perturb
@@ -16,6 +16,7 @@ __all__ = [
     "freq_drop",
     "add_noise",
     "add_babble_noise",
+    "NoiseLoader",
     "invert_polarity",
     "speed_perturb",
     "time_dropout",
