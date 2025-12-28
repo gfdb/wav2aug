@@ -314,10 +314,12 @@ def add_babble_noise(
     if waveforms.numel() == 0:
         return waveforms
 
-    # Use batch sum as noise for all samples (matches SpeechBrain)
-    noise = torch.sum(waveforms, dim=0, keepdim=True)
-    noise = noise.expand_as(waveforms)
-    
+    batch = waveforms.size(0)
+    if batch == 1:
+        noise = waveforms.clone()
+    else:
+        total = torch.sum(waveforms, dim=0, keepdim=True)
+        noise = (total - waveforms) / (batch - 1)
     return _mix_noise(waveforms, noise, snr_low=snr_low, snr_high=snr_high)
 
 

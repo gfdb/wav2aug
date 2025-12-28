@@ -39,8 +39,8 @@ def rand_amp_clip(
     abs_max = abs_max.clamp_min(eps)
     waveforms.div_(abs_max)
 
-    # Single clip value for entire batch (matches SpeechBrain)
-    clip = torch.rand(1, device=device, dtype=dtype)
+    # Per-sample clip thresholds
+    clip = torch.rand((waveforms.size(0), 1), device=device, dtype=dtype)
     clip = clip * (clip_high - clip_low) + clip_low
     clip = clip.clamp_min(eps)
 

@@ -10,58 +10,71 @@ _PAD: Final[int] = _FILTER_LEN // 2
 
 
 def _notch_filter(
-    notch_freq: float,
+    notch_freq: torch.Tensor,
     filter_length: int,
     notch_width: float,
-    device: torch.device,
-    dtype: torch.dtype,
 ) -> torch.Tensor:
     """Create a notch filter that removes a specific frequency.
 
-    This is a direct port of SpeechBrain's notch_filter implementation.
-    Reference: speechbrain/processing/signal_processing.py
+    Uses the speechbrain approach: builds high-pass and low-pass filters
+    and combines them to create a band-stop (notch) filter.
 
     Args:
         notch_freq: Normalized frequency to notch out (0-1, fraction of Nyquist).
         filter_length: Length of the filter (should be odd).
         notch_width: Width of the notch as fraction of Nyquist.
-        device: Device to create tensors on.
-        dtype: Data type for tensors.
 
     Returns:
         Notch filter kernel of shape [1, filter_length, 1].
     """
-    assert 0 < notch_freq <= 1
+    # At least 3 samples to make a filter
+    assert filter_length >= 3
     assert filter_length % 2 != 0  # must be odd
-    
-    pad = filter_length // 2
-    inputs = torch.arange(filter_length, device=device, dtype=dtype) - pad
 
-    # Avoid frequencies that are too low (matches SpeechBrain)
-    notch_freq = notch_freq + notch_width
+    device = notch_freq.device
+    dtype = notch_freq.dtype
 
-    # Define sinc function, avoiding division by zero
+    # Define sinc function: sin(x)/x, with limit at x=0 being 1
     def sinc(x: torch.Tensor) -> torch.Tensor:
-        # The zero is at the middle index
-        return torch.cat([
-            torch.sin(x[:pad]) / x[:pad],
-            torch.ones(1, device=device, dtype=dtype),
-            torch.sin(x[pad + 1:]) / x[pad + 1:]
-        ])
+        return torch.where(
+            x == 0,
+            torch.ones_like(x),
+            torch.sin(x) / x,
+        )
 
-    # Compute a low-pass filter with cutoff frequency notch_freq - notch_width
-    hlpf = sinc(3 * (notch_freq - notch_width) * inputs)
-    hlpf = hlpf * torch.blackman_window(filter_length, periodic=False, device=device, dtype=dtype)
-    hlpf = hlpf / torch.sum(hlpf)
+    # Create time indices centered at 0
+    n = torch.arange(filter_length, device=device, dtype=dtype)
+    n = n - (filter_length - 1) / 2
 
-    # Compute a high-pass filter with cutoff frequency notch_freq + notch_width
-    hhpf = sinc(3 * (notch_freq + notch_width) * inputs)
-    hhpf = hhpf * torch.blackman_window(filter_length, periodic=False, device=device, dtype=dtype)
-    hhpf = hhpf / -torch.sum(hhpf)
-    hhpf[pad] = hhpf[pad] + 1
+    # Compute low-pass cutoff (lower edge of notch)
+    low_cutoff = (notch_freq - notch_width).clamp(min=1e-12)
 
-    # Adding filters creates notch filter
-    return (hlpf + hhpf).view(1, filter_length, 1)
+    # Compute high-pass cutoff (upper edge of notch)  
+    high_cutoff = (notch_freq + notch_width).clamp(min=1e-12, max=1.0 - 1e-8)
+
+    # Low-pass filter for frequencies below the notch
+    # H_lp(f) = 2 * fc * sinc(2 * fc * n) * window
+    low_pass = 2 * low_cutoff * sinc(2 * low_cutoff * 3.141592653589793 * n)
+
+    # High-pass filter for frequencies above the notch
+    # H_hp(f) = delta(n) - 2 * fc * sinc(2 * fc * n) * window
+    high_pass = 2 * high_cutoff * sinc(2 * high_cutoff * 3.141592653589793 * n)
+    high_pass = -high_pass
+    high_pass[filter_length // 2] += 1.0
+
+    # Apply Blackman window to both
+    window = torch.blackman_window(filter_length, periodic=False, device=device, dtype=dtype)
+    low_pass = low_pass * window
+    high_pass = high_pass * window
+
+    # Normalize each filter
+    low_pass = low_pass / low_pass.sum().abs().clamp_min(1e-8)
+    high_pass = high_pass / high_pass.sum().abs().clamp_min(1e-8)
+
+    # Combine: band-stop = low-pass + high-pass
+    band_stop = low_pass + high_pass
+
+    return band_stop.view(1, filter_length, 1)
 
 
 def _convolve1d(
@@ -94,11 +107,11 @@ def _convolve1d(
 def freq_drop(
     waveforms: torch.Tensor,
     *,
-    bound_low: float = 0.0,
+    bound_low: float = 1e-12,
     bound_high: float = 1.0,
     band_count_low: int = 1,
     band_count_high: int = 8,
-    band_width: float = 0.1,
+    band_width: float = 0.10,
     clamp_abs: float = 8.0,
 ) -> torch.Tensor:
     """Frequency dropout using speechbrain's notch filter approach.
@@ -113,11 +126,11 @@ def freq_drop(
 
     Args:
         waveforms: Input waveforms. Shape [batch, time].
-        bound_low: Lower bound for normalized frequency (0-1). Defaults to 0.0.
+        bound_low: Lower bound for normalized frequency (0-1). Defaults to 1e-12.
         bound_high: Upper bound for normalized frequency (0-1). Defaults to 1.0.
         band_count_low: Minimum number of frequency bands to drop. Defaults to 1.
         band_count_high: Maximum number of frequency bands to drop. Defaults to 8.
-        band_width: Width of each notch filter as fraction of Nyquist. Defaults to 0.1.
+        band_width: Width of each notch filter as fraction of Nyquist. Defaults to 0.10.
         clamp_abs: Absolute clamp value for output. Defaults to 8.0.
 
     Returns:
@@ -162,8 +175,7 @@ def freq_drop(
     drop_frequencies = drop_frequencies.clamp(min=1e-12)
 
     for i in range(band_count):
-        freq = drop_frequencies[i].item()
-        notch_kernel = _notch_filter(freq, _FILTER_LEN, width, device, dtype)
+        notch_kernel = _notch_filter(drop_frequencies[i], _FILTER_LEN, width)
         drop_filter = _convolve1d(drop_filter, notch_kernel, _PAD)
 
     # Apply filter to entire batch at once
