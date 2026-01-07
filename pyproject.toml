@@ -30,6 +30,7 @@ dependencies = [
     "torch>=2.0.0",
     "torchaudio>=2.0.0",
     "torchcodec>=0.7.0",
+    "tqdm>=4.0.0",
 ]
 
 [project.optional-dependencies]

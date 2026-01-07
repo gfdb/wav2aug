@@ -1,18 +1,9 @@
 import pytest
 import torch
 
-from wav2aug.gpu import (
-    Wav2Aug,
-    add_babble_noise,
-    add_noise,
-    chunk_swap,
-    freq_drop,
-    invert_polarity,
-    rand_amp_clip,
-    rand_amp_scale,
-    speed_perturb,
-    time_dropout,
-)
+from wav2aug.gpu import (Wav2Aug, add_babble_noise, add_noise, chunk_swap,
+                         freq_drop, invert_polarity, rand_amp_clip,
+                         rand_amp_scale, speed_perturb, time_dropout)
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -74,7 +65,7 @@ def test_add_noise_with_stub(monkeypatch):
     ptr = waveforms.data_ptr()
     out = add_noise(
         waveforms,
-        sample_rate=16_000,
+        16_000,  # sample_rate as positional argument
         snr_low=0.0,
         snr_high=0.0,
         download=False,

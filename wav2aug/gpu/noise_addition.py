@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import os
-from typing import Iterator
 
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader, Dataset, IterableDataset
+from tqdm import tqdm
 
 from wav2aug.utils._aug_utils import _sample_noise_like
 
@@ -23,42 +22,19 @@ def _list_audio_files(root: str) -> list[str]:
     return sorted(out)
 
 
-class _NoiseDataset(IterableDataset):
-    """Iterable dataset that yields random noise samples indefinitely."""
-
-    def __init__(self, noise_dir: str, sample_rate: int, max_length: int = 16000 * 10):
-        self.noise_dir = noise_dir
-        self.sample_rate = sample_rate
-        self.max_length = max_length
-        self.files = _list_audio_files(noise_dir)
-        if not self.files:
-            raise ValueError(f"No audio files found in {noise_dir}")
-
-    def __iter__(self) -> Iterator[torch.Tensor]:
-        while True:
-            idx = torch.randint(0, len(self.files), (1,)).item()
-            try:
-                from torchcodec.decoders import AudioDecoder
-                dec = AudioDecoder(self.files[idx], sample_rate=self.sample_rate)
-                samp = dec.get_all_samples()
-                audio = samp.data.contiguous().mean(dim=0)  # mono, shape [time]
-                
-                # Truncate if too long
-                if audio.shape[0] > self.max_length:
-                    start = torch.randint(0, audio.shape[0] - self.max_length, (1,)).item()
-                    audio = audio[start:start + self.max_length]
-                
-                yield audio
-            except Exception:
-                # Skip bad files
-                continue
-
-
 class NoiseLoader:
-    """Efficient noise loader with background prefetching via DataLoader.
+    """Noise loader with preload-to-memory or on-demand loading.
+    
+    By default, loads all noise files into CPU RAM at initialization for
+    zero-I/O sampling during training. For memory-constrained environments,
+    set preload=False to load files on-demand.
     
     Usage:
-        noise_loader = NoiseLoader(noise_dir, sample_rate=16000, num_workers=2)
+        # Preload mode (default, recommended):
+        noise_loader = NoiseLoader(noise_dir, sample_rate=16000)
+        
+        # On-demand mode (for memory-constrained systems):
+        noise_loader = NoiseLoader(noise_dir, sample_rate=16000, preload=False)
         
         # In training loop:
         noisy = add_noise(waveforms, noise_loader, snr_low=0, snr_high=10)
@@ -68,40 +44,56 @@ class NoiseLoader:
         self,
         noise_dir: str,
         sample_rate: int,
-        num_workers: int = 0,
-        prefetch_factor: int = 2,
+        preload: bool = True,
     ):
         """Initialize the noise loader.
         
         Args:
             noise_dir: Directory containing noise audio files.
             sample_rate: Target sample rate for noise.
-            num_workers: Number of background workers for loading. 0 = main process.
-            prefetch_factor: Number of batches to prefetch per worker.
+            preload: If True (default), load all noise files into CPU RAM at
+                initialization. Sampling becomes a fast tensor slice operation
+                with no I/O. If False, load files on-demand (slower but uses
+                less memory).
         """
         self.noise_dir = noise_dir
         self.sample_rate = sample_rate
-        self.num_workers = num_workers
+        self.preload = preload
         self.files = _list_audio_files(noise_dir)
         if not self.files:
             raise ValueError(f"No audio files found in {noise_dir}")
         
-        if num_workers > 0:
-            dataset = _NoiseDataset(noise_dir, sample_rate)
-            self._loader = DataLoader(
-                dataset,
-                batch_size=1,
-                num_workers=num_workers,
-                prefetch_factor=prefetch_factor,
-                persistent_workers=True,
-            )
-            self._iter: Iterator[torch.Tensor] | None = None
-        else:
-            self._loader = None
-            self._iter = None
+        # Preloaded noise bank (1D tensor of all concatenated noise)
+        self._noise_bank: torch.Tensor | None = None
+        
+        if preload:
+            self._preload_all()
+
+    def _preload_all(self) -> None:
+        """Load all noise files into memory as float16 to save RAM."""
+        from torchcodec.decoders import AudioDecoder
+        
+        chunks: list[torch.Tensor] = []
+        
+        for f in tqdm(self.files, desc="Loading noise pack", unit="file"):
+            try:
+                dec = AudioDecoder(f, sample_rate=self.sample_rate)
+                samp = dec.get_all_samples()
+                audio = samp.data.contiguous().mean(dim=0)  # mono, shape [time]
+                chunks.append(audio)
+            except Exception:
+                # Skip bad files
+                continue
+        
+        if not chunks:
+            raise ValueError(f"No valid audio files could be loaded from {self.noise_dir}")
+        
+        # Store as float16 to halve memory usage (~650MB vs ~1.3GB)
+        # Cast back to input dtype happens in add_noise() via .to(dtype=waveforms.dtype)
+        self._noise_bank = torch.cat(chunks, dim=0).to(torch.float16)
 
     def _load_one(self) -> torch.Tensor:
-        """Load a single noise sample directly (no DataLoader)."""
+        """Load a single noise sample directly (no preloading)."""
         from torchcodec.decoders import AudioDecoder
         
         idx = torch.randint(0, len(self.files), (1,)).item()
@@ -118,27 +110,35 @@ class NoiseLoader:
             length: Required length of each sample in frames.
             
         Returns:
-            Tensor of shape [batch_size, length].
+            Tensor of shape [batch_size, length] on CPU.
         """
-        noises = []
-        
-        if self._loader is not None:
-            # Use DataLoader with workers
-            if self._iter is None:
-                self._iter = iter(self._loader)
+        if self._noise_bank is not None:
+            # Fast path: slice from preloaded noise bank
+            bank_len = self._noise_bank.shape[0]
             
-            for _ in range(batch_size):
-                noise = next(self._iter).squeeze(0)
-                noise = self._pad_or_crop(noise, length)
-                noises.append(noise)
+            if bank_len <= length:
+                # Noise bank shorter than requested - pad it
+                noise = self._noise_bank.unsqueeze(0).expand(batch_size, -1)
+                noise = F.pad(noise, (0, length - bank_len))
+                return noise
+            
+            # Generate random start indices for each sample
+            max_start = bank_len - length
+            starts = torch.randint(0, max_start + 1, (batch_size,))
+            
+            # Vectorized slicing: create index tensor [batch_size, length]
+            # where each row is [start, start+1, ..., start+length-1]
+            offsets = torch.arange(length)
+            indices = starts.unsqueeze(1) + offsets.unsqueeze(0)  # [batch_size, length]
+            return self._noise_bank[indices]
         else:
-            # Direct loading (num_workers=0)
+            # On-demand loading
+            noises = []
             for _ in range(batch_size):
                 noise = self._load_one()
                 noise = self._pad_or_crop(noise, length)
                 noises.append(noise)
-        
-        return torch.stack(noises, dim=0)
+            return torch.stack(noises, dim=0)
 
     def _pad_or_crop(self, noise: torch.Tensor, length: int) -> torch.Tensor:
         """Pad or crop noise to target length."""
@@ -148,6 +148,18 @@ class NoiseLoader:
             start = torch.randint(0, noise.shape[0] - length + 1, (1,)).item()
             noise = noise[start:start + length]
         return noise
+    
+    @property
+    def mode(self) -> str:
+        """Return current loading mode: 'preload' or 'on-demand'."""
+        return "preload" if self._noise_bank is not None else "on-demand"
+    
+    @property
+    def preloaded_duration_seconds(self) -> float | None:
+        """Total duration of preloaded audio in seconds, or None if not preloaded."""
+        if self._noise_bank is not None:
+            return self._noise_bank.shape[0] / self.sample_rate
+        return None
 
 
 @torch.no_grad()

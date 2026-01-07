@@ -21,7 +21,7 @@ class Wav2Aug:
         self,
         sample_rate: int,
         noise_dir: str | None = None,
-        noise_num_workers: int = 2,
+        noise_preload: bool = True,
     ) -> None:
         """Initialize Wav2Aug.
         
@@ -29,7 +29,8 @@ class Wav2Aug:
             sample_rate: Audio sample rate in Hz.
             noise_dir: Directory containing noise files. If None, will use the
                 default cached noise pack (auto-downloaded if needed).
-            noise_num_workers: Number of background workers for noise loading.
+            noise_preload: If True (default), preload all noise files into CPU RAM
+                at initialization for fast sampling. If False, load files on-demand.
         """
         self.sample_rate = int(sample_rate)
         
@@ -38,7 +39,7 @@ class Wav2Aug:
             from wav2aug.data.fetch import ensure_pack
             noise_dir = ensure_pack("pointsource_noises")
         self._noise_loader = NoiseLoader(
-            noise_dir, sample_rate, num_workers=noise_num_workers
+            noise_dir, sample_rate, preload=noise_preload
         )
         
         self._base_ops: List[
