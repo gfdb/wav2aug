@@ -5,10 +5,6 @@ from typing import Final
 import torch
 import torch.nn.functional as F
 
-_FILTER_LEN: Final[int] = 101
-_PAD: Final[int] = _FILTER_LEN // 2
-
-
 def _notch_filter(
     notch_freq: float,
     filter_length: int,
@@ -37,7 +33,7 @@ def _notch_filter(
     pad = filter_length // 2
     inputs = torch.arange(filter_length, device=device, dtype=dtype) - pad
 
-    # Avoid frequencies that are too low (matches SpeechBrain)
+    # Avoid frequencies that are too low
     notch_freq = notch_freq + notch_width
 
     # Define sinc function, avoiding division by zero
@@ -152,6 +148,9 @@ def freq_drop(
     ).item()
     if band_count <= 0:
         return waveforms
+    
+    _FILTER_LEN: Final[int] = 101
+    _PAD: Final[int] = _FILTER_LEN // 2
 
     # Start with delta function (identity filter)
     drop_filter = torch.zeros(1, _FILTER_LEN, 1, device=device, dtype=dtype)

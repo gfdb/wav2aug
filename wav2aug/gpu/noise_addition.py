@@ -36,6 +36,9 @@ class NoiseLoader:
         # On-demand mode (for memory-constrained systems):
         noise_loader = NoiseLoader(noise_dir, sample_rate=16000, preload=False)
         
+        # Custom storage dtype (e.g., for even lower memory):
+        noise_loader = NoiseLoader(noise_dir, sample_rate=16000, storage_dtype=torch.float8_e4m3fn)
+        
         # In training loop:
         noisy = add_noise(waveforms, noise_loader, snr_low=0, snr_high=10)
     """
@@ -45,6 +48,7 @@ class NoiseLoader:
         noise_dir: str,
         sample_rate: int,
         preload: bool = True,
+        storage_dtype: torch.dtype = torch.float16,
     ):
         """Initialize the noise loader.
         
@@ -55,10 +59,16 @@ class NoiseLoader:
                 initialization. Sampling becomes a fast tensor slice operation
                 with no I/O. If False, load files on-demand (slower but uses
                 less memory).
+            storage_dtype: Data type for storing preloaded audio in memory.
+                Defaults to float16 (~650MB for pointsource_noises). Use float32
+                for maximum precision, or float8 variants for minimum memory. Note: In
+                my experiments, float16 halved memory usage in exchange for an 
+                extremely tiny performance degradation.
         """
         self.noise_dir = noise_dir
         self.sample_rate = sample_rate
         self.preload = preload
+        self.storage_dtype = storage_dtype
         self.files = _list_audio_files(noise_dir)
         if not self.files:
             raise ValueError(f"No audio files found in {noise_dir}")
@@ -70,7 +80,7 @@ class NoiseLoader:
             self._preload_all()
 
     def _preload_all(self) -> None:
-        """Load all noise files into memory as float16 to save RAM."""
+        """Load all noise files into memory."""
         from torchcodec.decoders import AudioDecoder
         
         chunks: list[torch.Tensor] = []
@@ -80,7 +90,8 @@ class NoiseLoader:
                 dec = AudioDecoder(f, sample_rate=self.sample_rate)
                 samp = dec.get_all_samples()
                 audio = samp.data.contiguous().mean(dim=0)  # mono, shape [time]
-                chunks.append(audio)
+                # Convert each chunk immediately to save peak RAM
+                chunks.append(audio.to(self.storage_dtype))
             except Exception:
                 # Skip bad files
                 continue
@@ -88,9 +99,7 @@ class NoiseLoader:
         if not chunks:
             raise ValueError(f"No valid audio files could be loaded from {self.noise_dir}")
         
-        # Store as float16 to halve memory usage (~650MB vs ~1.3GB)
-        # Cast back to input dtype happens in add_noise() via .to(dtype=waveforms.dtype)
-        self._noise_bank = torch.cat(chunks, dim=0).to(torch.float16)
+        self._noise_bank = torch.cat(chunks, dim=0)
 
     def _load_one(self) -> torch.Tensor:
         """Load a single noise sample directly (no preloading)."""
