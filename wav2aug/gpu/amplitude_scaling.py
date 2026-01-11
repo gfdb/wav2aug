@@ -32,7 +32,7 @@ def rand_amp_scale(
     device = waveforms.device
     dtype = waveforms.dtype
 
-    # Normalize to [-1, 1] by dividing by absolute max 
+    # Normalize to [-1, 1] by dividing by absolute max
     abs_max = waveforms.abs().amax(dim=1, keepdim=True)
     # Avoid division by zero for silent signals
     abs_max = abs_max.clamp_min(1e-14)

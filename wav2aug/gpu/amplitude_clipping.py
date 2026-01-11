@@ -47,7 +47,7 @@ def rand_amp_clip(
     # Apply clipping
     waveforms.clamp_(-clip, clip)
 
-    # Restore amplitude scaled by clip factor 
+    # Restore amplitude scaled by clip factor
     waveforms.mul_(abs_max / clip)
     return waveforms
 

@@ -24,7 +24,7 @@ class Wav2Aug:
         noise_preload: bool = True,
     ) -> None:
         """Initialize Wav2Aug.
-        
+
         Args:
             sample_rate: Audio sample rate in Hz.
             noise_dir: Directory containing noise files. If None, will use the
@@ -33,15 +33,14 @@ class Wav2Aug:
                 at initialization for fast sampling. If False, load files on-demand.
         """
         self.sample_rate = int(sample_rate)
-        
+
         # Initialize noise loader
         if noise_dir is None:
             from wav2aug.data.fetch import ensure_pack
+
             noise_dir = ensure_pack("pointsource_noises")
-        self._noise_loader = NoiseLoader(
-            noise_dir, sample_rate, preload=noise_preload
-        )
-        
+        self._noise_loader = NoiseLoader(noise_dir, sample_rate, preload=noise_preload)
+
         self._base_ops: List[
             Callable[[torch.Tensor, torch.Tensor | None], torch.Tensor]
         ] = [

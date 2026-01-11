@@ -68,7 +68,9 @@ def _download(url: str, out_path: str) -> None:
         chunk = 1 << 20
         done = 0
 
-        with tqdm(total=total, desc=f"Downloading {name}", unit="B", unit_scale=True) as pbar:
+        with tqdm(
+            total=total, desc=f"Downloading {name}", unit="B", unit_scale=True
+        ) as pbar:
             while True:
                 buf = r.read(chunk)
                 if not buf:

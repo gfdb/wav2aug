@@ -63,7 +63,12 @@ def chunk_swap(
     src_starts = starts.gather(1, perms)
 
     # Build gather indices: start with identity [batch, total_time]
-    indices = torch.arange(total_time, device=device).unsqueeze(0).expand(batch, -1).contiguous()
+    indices = (
+        torch.arange(total_time, device=device)
+        .unsqueeze(0)
+        .expand(batch, -1)
+        .contiguous()
+    )
 
     # Compute all destination and source positions: [batch, _NUM_CHUNKS * chunk_size]
     dest_indices = (starts.unsqueeze(2) + arange_chunk).reshape(batch, -1)

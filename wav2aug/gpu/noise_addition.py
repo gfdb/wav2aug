@@ -24,21 +24,21 @@ def _list_audio_files(root: str) -> list[str]:
 
 class NoiseLoader:
     """Noise loader with preload-to-memory or on-demand loading.
-    
+
     By default, loads all noise files into CPU RAM at initialization for
     zero-I/O sampling during training. For memory-constrained environments,
     set preload=False to load files on-demand.
-    
+
     Usage:
         # Preload mode (default, recommended):
         noise_loader = NoiseLoader(noise_dir, sample_rate=16000)
-        
+
         # On-demand mode (for memory-constrained systems):
         noise_loader = NoiseLoader(noise_dir, sample_rate=16000, preload=False)
-        
+
         # Custom storage dtype (e.g., for even lower memory):
         noise_loader = NoiseLoader(noise_dir, sample_rate=16000, storage_dtype=torch.float8_e4m3fn)
-        
+
         # In training loop:
         noisy = add_noise(waveforms, noise_loader, snr_low=0, snr_high=10)
     """
@@ -51,7 +51,7 @@ class NoiseLoader:
         storage_dtype: torch.dtype = torch.float16,
     ):
         """Initialize the noise loader.
-        
+
         Args:
             noise_dir: Directory containing noise audio files.
             sample_rate: Target sample rate for noise.
@@ -62,7 +62,7 @@ class NoiseLoader:
             storage_dtype: Data type for storing preloaded audio in memory.
                 Defaults to float16 (~650MB for pointsource_noises). Use float32
                 for maximum precision, or float8 variants for minimum memory. Note: In
-                my experiments, float16 halved memory usage in exchange for an 
+                my experiments, float16 halved memory usage in exchange for an
                 extremely tiny performance degradation.
         """
         self.noise_dir = noise_dir
@@ -72,19 +72,19 @@ class NoiseLoader:
         self.files = _list_audio_files(noise_dir)
         if not self.files:
             raise ValueError(f"No audio files found in {noise_dir}")
-        
+
         # Preloaded noise bank (1D tensor of all concatenated noise)
         self._noise_bank: torch.Tensor | None = None
-        
+
         if preload:
             self._preload_all()
 
     def _preload_all(self) -> None:
         """Load all noise files into memory."""
         from torchcodec.decoders import AudioDecoder
-        
+
         chunks: list[torch.Tensor] = []
-        
+
         for f in tqdm(self.files, desc="Loading noise pack", unit="file"):
             try:
                 dec = AudioDecoder(f, sample_rate=self.sample_rate)
@@ -95,16 +95,18 @@ class NoiseLoader:
             except Exception:
                 # Skip bad files
                 continue
-        
+
         if not chunks:
-            raise ValueError(f"No valid audio files could be loaded from {self.noise_dir}")
-        
+            raise ValueError(
+                f"No valid audio files could be loaded from {self.noise_dir}"
+            )
+
         self._noise_bank = torch.cat(chunks, dim=0)
 
     def _load_one(self) -> torch.Tensor:
         """Load a single noise sample directly (no preloading)."""
         from torchcodec.decoders import AudioDecoder
-        
+
         idx = torch.randint(0, len(self.files), (1,)).item()
         dec = AudioDecoder(self.files[idx], sample_rate=self.sample_rate)
         samp = dec.get_all_samples()
@@ -113,28 +115,28 @@ class NoiseLoader:
 
     def get_batch(self, batch_size: int, length: int) -> torch.Tensor:
         """Get a batch of noise samples.
-        
+
         Args:
             batch_size: Number of noise samples needed.
             length: Required length of each sample in frames.
-            
+
         Returns:
             Tensor of shape [batch_size, length] on CPU.
         """
         if self._noise_bank is not None:
             # Fast path: slice from preloaded noise bank
             bank_len = self._noise_bank.shape[0]
-            
+
             if bank_len <= length:
                 # Noise bank shorter than requested - pad it
                 noise = self._noise_bank.unsqueeze(0).expand(batch_size, -1)
                 noise = F.pad(noise, (0, length - bank_len))
                 return noise
-            
+
             # Generate random start indices for each sample
             max_start = bank_len - length
             starts = torch.randint(0, max_start + 1, (batch_size,))
-            
+
             # Vectorized slicing: create index tensor [batch_size, length]
             # where each row is [start, start+1, ..., start+length-1]
             offsets = torch.arange(length)
@@ -155,14 +157,14 @@ class NoiseLoader:
             noise = F.pad(noise, (0, length - noise.shape[0]))
         elif noise.shape[0] > length:
             start = torch.randint(0, noise.shape[0] - length + 1, (1,)).item()
-            noise = noise[start:start + length]
+            noise = noise[start : start + length]
         return noise
-    
+
     @property
     def mode(self) -> str:
         """Return current loading mode: 'preload' or 'on-demand'."""
         return "preload" if self._noise_bank is not None else "on-demand"
-    
+
     @property
     def preloaded_duration_seconds(self) -> float | None:
         """Total duration of preloaded audio in seconds, or None if not preloaded."""
@@ -262,12 +264,12 @@ def add_noise(
 
     Returns:
         torch.Tensor: The waveforms with point-source noise added.
-    
+
     Example:
         # Fast path with NoiseLoader (recommended):
         loader = NoiseLoader("/path/to/noise", sample_rate=16000, num_workers=4)
         noisy = add_noise(waveforms, loader, snr_low=0, snr_high=10)
-        
+
         # Legacy path (slower, loads from disk each call):
         noisy = add_noise(waveforms, 16000, snr_low=0, snr_high=10, noise_dir="/path/to/noise")
     """
@@ -288,9 +290,10 @@ def add_noise(
     else:
         # Legacy path: load noise synchronously
         sample_rate = sample_rate_or_loader
-        
+
         if noise_dir is None and download:
             from wav2aug.data.fetch import ensure_pack
+
             noise_dir = ensure_pack(pack)
 
         noises = []
@@ -338,7 +341,7 @@ def add_babble_noise(
     # Use batch sum as noise for all samples (matches SpeechBrain)
     noise = torch.sum(waveforms, dim=0, keepdim=True)
     noise = noise.expand_as(waveforms)
-    
+
     return _mix_noise(waveforms, noise, snr_low=snr_low, snr_high=snr_high)
 
 

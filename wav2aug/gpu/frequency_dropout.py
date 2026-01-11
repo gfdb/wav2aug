@@ -5,6 +5,7 @@ from typing import Final
 import torch
 import torch.nn.functional as F
 
+
 def _notch_filter(
     notch_freq: float,
     filter_length: int,
@@ -29,7 +30,7 @@ def _notch_filter(
     """
     assert 0 < notch_freq <= 1
     assert filter_length % 2 != 0  # must be odd
-    
+
     pad = filter_length // 2
     inputs = torch.arange(filter_length, device=device, dtype=dtype) - pad
 
@@ -39,20 +40,26 @@ def _notch_filter(
     # Define sinc function, avoiding division by zero
     def sinc(x: torch.Tensor) -> torch.Tensor:
         # The zero is at the middle index
-        return torch.cat([
-            torch.sin(x[:pad]) / x[:pad],
-            torch.ones(1, device=device, dtype=dtype),
-            torch.sin(x[pad + 1:]) / x[pad + 1:]
-        ])
+        return torch.cat(
+            [
+                torch.sin(x[:pad]) / x[:pad],
+                torch.ones(1, device=device, dtype=dtype),
+                torch.sin(x[pad + 1 :]) / x[pad + 1 :],
+            ]
+        )
 
     # Compute a low-pass filter with cutoff frequency notch_freq - notch_width
     hlpf = sinc(3 * (notch_freq - notch_width) * inputs)
-    hlpf = hlpf * torch.blackman_window(filter_length, periodic=False, device=device, dtype=dtype)
+    hlpf = hlpf * torch.blackman_window(
+        filter_length, periodic=False, device=device, dtype=dtype
+    )
     hlpf = hlpf / torch.sum(hlpf)
 
     # Compute a high-pass filter with cutoff frequency notch_freq + notch_width
     hhpf = sinc(3 * (notch_freq + notch_width) * inputs)
-    hhpf = hhpf * torch.blackman_window(filter_length, periodic=False, device=device, dtype=dtype)
+    hhpf = hhpf * torch.blackman_window(
+        filter_length, periodic=False, device=device, dtype=dtype
+    )
     hhpf = hhpf / -torch.sum(hhpf)
     hhpf[pad] = hhpf[pad] + 1
 
@@ -148,7 +155,7 @@ def freq_drop(
     ).item()
     if band_count <= 0:
         return waveforms
-    
+
     _FILTER_LEN: Final[int] = 101
     _PAD: Final[int] = _FILTER_LEN // 2
 
@@ -157,7 +164,9 @@ def freq_drop(
     drop_filter[0, _PAD, 0] = 1.0
 
     # Sample frequencies and build composite filter by convolving notch kernels
-    drop_frequencies = torch.rand(band_count, device=device, dtype=dtype) * rng + bound_low
+    drop_frequencies = (
+        torch.rand(band_count, device=device, dtype=dtype) * rng + bound_low
+    )
     drop_frequencies = drop_frequencies.clamp(min=1e-12)
 
     for i in range(band_count):
