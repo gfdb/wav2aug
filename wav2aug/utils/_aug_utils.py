@@ -17,8 +17,9 @@ def apply_snr_and_mix(
 ) -> torch.Tensor:
     """Apply SNR scaling and mix noise into waveform.
 
-    Computes signal and noise RMS, samples random SNR, and mixes noise
-    at appropriate level. Modifies both input tensors in-place.
+    Uses SpeechBrain's mixing formula which properly preserves signal
+    energy based on the target SNR. Computes signal and noise RMS, samples
+    random SNR, and mixes noise at appropriate level.
 
     Args:
         view: Clean waveform in [C, T] format. Modified in-place.
@@ -29,26 +30,21 @@ def apply_snr_and_mix(
     Returns:
         The modified view tensor (same object as input).
     """
-    """Apply SNR scaling and mix noise into the waveform.
+    # Compute RMS of signal
+    signal_rms = view.pow(2).mean(dim=1, keepdim=True).sqrt().clamp_min(_EPS)
 
-    Args:
-        view (torch.Tensor): The input waveform. Shape [C, T].
-        noise (torch.Tensor): The noise to mix. Shape [C, T].
-        snr_low (float): Minimum SNR (dB).
-        snr_high (float): Maximum SNR (dB).
-
-    Returns:
-        torch.Tensor: The waveform with noise mixed in.
-    """
-    r_x = view.pow(2).mean(dim=1, keepdim=True).sqrt().clamp_min(_EPS)
-
+    # Sample random SNR and convert to amplitude factor
     SNR = torch.rand(()) * (snr_high - snr_low) + snr_low
-    factor = 1.0 / (torch.pow(torch.tensor(10.0, dtype=view.dtype), SNR / 20.0) + 1.0)
-    view.mul_(1.0 - factor)
+    snr_amplitude = torch.pow(torch.tensor(10.0, dtype=view.dtype), SNR / 20.0)
+    noise_amplitude_factor = 1.0 / (snr_amplitude + 1.0)
 
-    r_n = noise.pow(2).mean(dim=1, keepdim=True).sqrt().clamp_min(_EPS)
+    # Scale signal by (1 - factor)
+    view.mul_(1.0 - noise_amplitude_factor)
 
-    noise.mul_(factor * r_x / r_n)
+    # Compute noise RMS and scale noise appropriately
+    noise_rms = noise.pow(2).mean(dim=1, keepdim=True).sqrt().clamp_min(_EPS)
+    noise_scale = (noise_amplitude_factor * signal_rms) / noise_rms
+    noise.mul_(noise_scale)
     view.add_(noise)
 
     return view

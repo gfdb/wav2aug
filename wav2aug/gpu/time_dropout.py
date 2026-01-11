@@ -27,46 +27,43 @@ def time_dropout(
     waveforms: torch.Tensor,
     sample_rate: int = 16_000,
     *,
-    lengths: torch.Tensor = None,
+    lengths: torch.Tensor | None = None,
     chunk_count_low: int = 1,
     chunk_count_high: int = 8,
     chunk_size_low: int = 0,
     chunk_size_high: int = 4000,
     base_sample_rate: int = 16_000,
 ) -> torch.Tensor:
-    """Apply time dropout with per-sample independent random zeroed segments.
+    """Apply time dropout using vectorized mask operations.
 
-    Each waveform draws its own number of chunks (uniform integer in
-    [chunk_count_low, chunk_count_high]), random lengths in the (scaled)
-    range [chunk_size_low, chunk_size_high], and random start positions.
-    Segments are zeroed only within the valid portion of each waveform.
+    This implementation uses vectorized mask operations while maintaining
+    per-sample chunk counts to match speechbrain's DropChunk semantics.
+
+    Each sample draws its own number of chunks (uniform in [chunk_count_low,
+    chunk_count_high]), but we use the maximum chunk count across the batch
+    to enable vectorization. Samples with fewer chunks simply have some
+    chunks with zero length.
 
     Args:
-        waveforms (torch.Tensor): The input waveforms. Shape [batch, time].
-        lengths (torch.Tensor): The valid lengths of each waveform. Shape [batch].
-        sample_rate (int, optional): The sample rate of the audio. Defaults to 16_000.
-        chunk_count_low (int, optional): The minimum number of chunks to drop. Defaults to 1.
-        chunk_count_high (int, optional): The maximum number of chunks to drop. Defaults to 8.
-        chunk_size_low (int, optional): The minimum size of each chunk. Defaults to 0.
-        chunk_size_high (int, optional): The maximum size of each chunk. Defaults to 4000.
-        base_sample_rate (int, optional): Reference sample rate used for scaling chunk lengths. Defaults to 16_000.
-
-    Raises:
-        AssertionError: If the input waveforms are not 2D or if the batch size is 0.
-        ValueError: If chunk_count_low is negative or if chunk_count_high is less than chunk_count_low.
-        ValueError: If chunk_size_low is negative or if chunk_size_high is less than chunk_size_low.
+        waveforms: Input waveforms. Shape [batch, time].
+        sample_rate: The sample rate of the audio. Defaults to 16_000.
+        lengths: Relative valid lengths of each waveform (0-1). Shape [batch].
+            If None, assumes all samples have full length.
+        chunk_count_low: Minimum number of chunks to drop. Defaults to 1.
+        chunk_count_high: Maximum number of chunks to drop. Defaults to 8.
+        chunk_size_low: Minimum size of each chunk in samples. Defaults to 0.
+        chunk_size_high: Maximum size of each chunk in samples. Defaults to 4000.
+        base_sample_rate: Reference sample rate for scaling chunk lengths.
 
     Returns:
-        torch.Tensor: The waveforms with time dropout applied.
-    """
+        Waveforms with time dropout applied (in-place modification).
 
+    Raises:
+        AssertionError: If waveforms are not 2D.
+        ValueError: If chunk parameters are invalid.
+    """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms with shape [batch, time]")
-
-    if lengths is None:
-        lengths = torch.ones(
-            (waveforms.size(0),), device=waveforms.device, dtype=torch.float32
-        )
 
     batch, total_time = waveforms.shape
     if batch == 0 or total_time == 0:
@@ -81,8 +78,14 @@ def time_dropout(
     if chunk_size_high < chunk_size_low:
         raise ValueError("chunk_size_high must be >= chunk_size_low")
 
-    # absolute valid samples per row
-    valid_lengths = (lengths * total_time).to(torch.long).clamp_(0, total_time)
+    device = waveforms.device
+
+    if lengths is None:
+        valid_lengths = torch.full(
+            (batch,), total_time, device=device, dtype=torch.long
+        )
+    else:
+        valid_lengths = (lengths * total_time).to(torch.long).clamp_(0, total_time)
 
     min_len, max_len = _scaled_bounds(
         sample_rate,
@@ -96,41 +99,58 @@ def time_dropout(
     if chunk_count_high == 0 or max_len == 0:
         return waveforms
 
-    device = waveforms.device
+    # Sample per-sample chunk counts (like speechbrain's DropChunk)
+    # Shape: [batch]
+    drop_times = torch.randint(
+        chunk_count_low, chunk_count_high + 1, (batch,), device=device
+    )
 
-    for b in range(batch):
-        row_valid = int(valid_lengths[b].item())
-        if row_valid <= 0:
-            continue
+    # Use max chunk count for vectorization; samples with fewer chunks
+    # will have some chunks zeroed out via masking
+    max_chunks = drop_times.max().item()
+    if max_chunks == 0:
+        return waveforms
 
-        chunk_count = int(
-            torch.randint(
-                chunk_count_low,
-                chunk_count_high + 1,
-                (),
-                device=device,
-            ).item()
-        )
-        if chunk_count == 0:
-            continue
+    # Sample chunk lengths: [batch, max_chunks]
+    chunk_lengths = torch.randint(
+        min_len, max_len + 1, (batch, max_chunks), device=device
+    )
 
-        lengths_b = torch.randint(
-            min_len,
-            max_len + 1,
-            (chunk_count,),
-            device=device,
-        )
-        lengths_b = torch.clamp(lengths_b, max=row_valid)
+    # Mask out chunks beyond each sample's drop_times
+    # chunk_idx: [1, max_chunks], drop_times: [batch, 1]
+    chunk_idx = torch.arange(max_chunks, device=device).unsqueeze(0)
+    active_mask = chunk_idx < drop_times.unsqueeze(1)  # [batch, max_chunks]
 
-        rand = torch.rand((chunk_count,), device=device)
-        start_max = (row_valid - lengths_b).clamp_min(0)
-        starts_b = torch.floor(rand * (start_max + 1).to(rand.dtype)).to(torch.long)
+    # Zero out inactive chunks
+    chunk_lengths = chunk_lengths * active_mask
 
-        for i in range(chunk_count):
-            s = int(starts_b[i].item())
-            e = int((starts_b[i] + lengths_b[i]).item())
-            if e > s:
-                waveforms[b, s:e] = 0.0
+    # Clamp to valid lengths per sample
+    chunk_lengths = torch.minimum(chunk_lengths, valid_lengths.unsqueeze(1))
+
+    # Compute valid start range per sample/chunk: start_max = valid_len - chunk_len
+    start_max = (valid_lengths.unsqueeze(1) - chunk_lengths).clamp_min(0)
+
+    # Sample start positions: uniform in [0, start_max]
+    rand = torch.rand((batch, max_chunks), device=device)
+    starts = (rand * (start_max + 1).float()).long()
+
+    # Build a time index: [1, total_time]
+    time_idx = torch.arange(total_time, device=device).unsqueeze(0)  # [1, T]
+
+    # For each chunk, create a mask where time_idx is in [start, start+length)
+    # starts: [B, max_chunks] -> [B, max_chunks, 1]
+    # chunk_lengths: [B, max_chunks] -> [B, max_chunks, 1]
+    starts_exp = starts.unsqueeze(2)  # [B, max_chunks, 1]
+    ends_exp = (starts + chunk_lengths).unsqueeze(2)  # [B, max_chunks, 1]
+    time_idx_exp = time_idx.unsqueeze(1)  # [1, 1, T]
+
+    # Mask: True where we should zero out
+    # [B, max_chunks, T] -> any across chunks -> [B, T]
+    chunk_mask = (time_idx_exp >= starts_exp) & (time_idx_exp < ends_exp)
+    drop_mask = chunk_mask.any(dim=1)  # [B, T]
+
+    # Zero out masked positions
+    waveforms.masked_fill_(drop_mask, 0.0)
 
     return waveforms
 

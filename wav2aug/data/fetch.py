@@ -5,14 +5,14 @@ import json
 import logging
 import os
 import pathlib
-import shutil
-import sys
 import tarfile
 import tempfile
 import time
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
+
+from tqdm import tqdm
 
 try:
     import fcntl
@@ -59,25 +59,7 @@ def _safe_extract_tar_gz(tgz_path: str, dest_dir: str) -> None:
 
 def _download(url: str, out_path: str) -> None:
     """Download with simple progress bar to stderr."""
-    show = os.environ.get("WAV2AUG_PROGRESS", "1") != "0"
-
-    def _progress(done: int, total: int):
-        w = max(10, min(40, shutil.get_terminal_size(fallback=(80, 20)).columns - 30))
-        if total > 0:
-            pct = done / total
-            fill = int(pct * w)
-            bar = "#" * fill + "." * (w - fill)
-            sys.stderr.write(
-                f"\rwav2aug - Progress [{bar}] {pct*100:5.1f}%  {done/1e6:6.1f}MB/{total/1e6:6.1f}MB"
-            )
-        else:
-            sys.stderr.write(f"\rwav2aug - Progress {done/1e6:6.1f}MB")
-        sys.stderr.flush()
-
     name = Path(urlparse(url).path).name or "download"
-
-    sys.stderr.write(f"wav2aug - Downloading: {name}\n")
-    sys.stderr.flush()
 
     req = urllib.request.Request(url, headers={"User-Agent": "wav2aug/1.0"})
     start = time.monotonic()
@@ -85,25 +67,17 @@ def _download(url: str, out_path: str) -> None:
         total = int(r.headers.get("Content-Length") or 0)
         chunk = 1 << 20
         done = 0
-        last = time.monotonic()
-        tty = show and sys.stderr.isatty()
-        if tty:
-            _progress(0, total)
 
-        while True:
-            buf = r.read(chunk)
-            if not buf:
-                break
-            f.write(buf)
-            done += len(buf)
-            if tty and (time.monotonic() - last) >= 0.05:
-                _progress(done, total)
-                last = time.monotonic()
-
-        if tty:
-            _progress(done, total)
-            sys.stderr.write("\n")
-            sys.stderr.flush()
+        with tqdm(
+            total=total, desc=f"Downloading {name}", unit="B", unit_scale=True
+        ) as pbar:
+            while True:
+                buf = r.read(chunk)
+                if not buf:
+                    break
+                f.write(buf)
+                done += len(buf)
+                pbar.update(len(buf))
 
     elapsed = max(1e-6, time.monotonic() - start)
     log.info(

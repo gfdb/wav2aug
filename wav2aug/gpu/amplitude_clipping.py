@@ -13,6 +13,9 @@ def rand_amp_clip(
 ) -> torch.Tensor:
     """Random amplitude clipping for batched waveforms.
 
+    Normalizes each waveform to [-1, 1], applies clipping, then restores
+    the original amplitude scaled by the clip factor.
+
     Args:
         waveforms: Tensor of shape [batch, time].
         clip_low: Minimum clipping threshold as a fraction of peak.
@@ -30,19 +33,22 @@ def rand_amp_clip(
 
     device = waveforms.device
     dtype = waveforms.dtype
-    peaks = waveforms.abs().amax(dim=1, keepdim=True).clamp_min(1.0)
-    normalized = waveforms / peaks
 
-    # Per-sample clip thresholds
-    clip = torch.rand((waveforms.size(0), 1), device=device, dtype=dtype)
+    # Normalize to [-1, 1] by absolute max
+    abs_max = waveforms.abs().amax(dim=1, keepdim=True)
+    abs_max = abs_max.clamp_min(eps)
+    waveforms.div_(abs_max)
+
+    # Single clip value for entire batch (matches SpeechBrain)
+    clip = torch.rand(1, device=device, dtype=dtype)
     clip = clip * (clip_high - clip_low) + clip_low
     clip = clip.clamp_min(eps)
 
-    normalized = torch.minimum(normalized, clip)
-    normalized = torch.maximum(normalized, -clip)
+    # Apply clipping
+    waveforms.clamp_(-clip, clip)
 
-    scale = peaks / clip
-    waveforms.copy_(normalized * scale)
+    # Restore amplitude scaled by clip factor
+    waveforms.mul_(abs_max / clip)
     return waveforms
 
 

@@ -49,7 +49,7 @@ def test_chunk_swap_outputs_permutation():
     )
     reference = base.clone()
     out = chunk_swap(base)
-    assert out.data_ptr() == base.data_ptr()
+    assert out.shape == base.shape
     assert torch.allclose(
         torch.sort(out, dim=1).values, torch.sort(reference, dim=1).values
     )
@@ -74,7 +74,7 @@ def test_add_noise_with_stub(monkeypatch):
     ptr = waveforms.data_ptr()
     out = add_noise(
         waveforms,
-        sample_rate=16_000,
+        16_000,  # sample_rate as positional argument
         snr_low=0.0,
         snr_high=0.0,
         download=False,
@@ -103,8 +103,9 @@ def test_speed_perturb_adjusts_length():
     waveforms = torch.linspace(
         0, 1, steps=200, device=DEVICE, dtype=torch.float32
     ).repeat(2, 1)
-    out = speed_perturb(waveforms, 16000, speed_changes=(0.5,))
-    expected_len = int(round(200 * 1 / 0.5))
+    out = speed_perturb(waveforms, 16000, speeds=(50,))
+    # speed=50% → ratio=2.0 → 2x samples (slower)
+    expected_len = int(200 * 2.0)
     assert out.shape == (2, expected_len)
 
 

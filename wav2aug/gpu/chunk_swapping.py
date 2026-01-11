@@ -17,11 +17,13 @@ def chunk_swap(
     The implementation selects four non-overlapping segments of length
     ``ceil(0.01 * time)`` and permutes them independently per waveform.
 
+    This version uses fully vectorized gather/scatter operations.
+
     Args:
         waveforms: Tensor of shape [batch, time].
 
     Returns:
-        The input ``waveforms`` tensor, modified in-place.
+        A new tensor with chunks swapped.
 
     Raises:
         ValueError: If the waveform is shorter than the total chunk span.
@@ -39,32 +41,44 @@ def chunk_swap(
 
     device = waveforms.device
 
-    src = waveforms.clone()
+    # Precompute ranges
     arange_chunk = torch.arange(chunk_size, device=device)
+    arange_n = torch.arange(_NUM_CHUNKS, device=device)
 
-    for b in range(batch):
-        slack = total_time - _NUM_CHUNKS * chunk_size
-        if slack == 0:
-            offsets = torch.zeros(_NUM_CHUNKS, device=device, dtype=torch.long)
-        else:
-            scores = torch.rand((slack + _NUM_CHUNKS,), device=device)
-            topk = torch.topk(scores, _NUM_CHUNKS, largest=False).indices
-            offsets = torch.sort(topk).values
-            offsets = offsets - torch.arange(_NUM_CHUNKS, device=device)
-        starts = offsets + torch.arange(_NUM_CHUNKS, device=device) * chunk_size
-        perm_scores = torch.rand((_NUM_CHUNKS,), device=device)
-        perm = torch.argsort(perm_scores)
-        if torch.equal(perm, torch.arange(_NUM_CHUNKS, device=device)):
-            continue
-        for dest_chunk in range(_NUM_CHUNKS):
-            dest_start = starts[dest_chunk]
-            src_chunk = perm[dest_chunk]
-            src_start = starts[src_chunk]
-            dest_idx = dest_start + arange_chunk
-            src_idx = src_start + arange_chunk
-            waveforms[b, dest_idx] = src[b, src_idx]
+    slack = total_time - _NUM_CHUNKS * chunk_size
 
-    return waveforms
+    # Sample chunk positions: [batch, _NUM_CHUNKS]
+    if slack == 0:
+        starts = (arange_n * chunk_size).unsqueeze(0).expand(batch, -1)
+    else:
+        scores = torch.rand((batch, slack + _NUM_CHUNKS), device=device)
+        topk = torch.topk(scores, _NUM_CHUNKS, dim=1, largest=False).indices
+        offsets = torch.sort(topk, dim=1).values - arange_n
+        starts = offsets + arange_n * chunk_size
+
+    # Sample permutations: [batch, _NUM_CHUNKS]
+    perms = torch.argsort(torch.rand((batch, _NUM_CHUNKS), device=device), dim=1)
+
+    # Source starts after permutation
+    src_starts = starts.gather(1, perms)
+
+    # Build gather indices: start with identity [batch, total_time]
+    indices = (
+        torch.arange(total_time, device=device)
+        .unsqueeze(0)
+        .expand(batch, -1)
+        .contiguous()
+    )
+
+    # Compute all destination and source positions: [batch, _NUM_CHUNKS * chunk_size]
+    dest_indices = (starts.unsqueeze(2) + arange_chunk).reshape(batch, -1)
+    src_indices = (src_starts.unsqueeze(2) + arange_chunk).reshape(batch, -1)
+
+    # Single scatter to update index mapping
+    indices.scatter_(1, dest_indices, src_indices)
+
+    # Apply gather to get swapped waveforms
+    return waveforms.gather(1, indices)
 
 
 __all__ = ["chunk_swap"]
