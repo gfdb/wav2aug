@@ -7,7 +7,9 @@ import torchaudio
 
 
 @lru_cache(maxsize=32)
-def _get_resampler(orig_freq: int, new_freq: int, device: str) -> torchaudio.transforms.Resample:
+def _get_resampler(
+    orig_freq: int, new_freq: int, device: str
+) -> torchaudio.transforms.Resample:
     """Get a cached Resample transform. The kernel is computed once and reused."""
     resampler = torchaudio.transforms.Resample(orig_freq=orig_freq, new_freq=new_freq)
     return resampler.to(device)
@@ -22,9 +24,7 @@ def speed_perturb(
 ) -> torch.Tensor:
     """Apply a single random speed factor to every waveform in the batch.
 
-    Speed values are percentages (e.g., 90 = 90% = slower, 110 = 110% = faster).
-    Using integer percentages ensures good GCD with common sample rates,
-    which makes the resampling filter efficient.
+    Speed values are percentages (e.g., 90 = 90% speed = slower, 110 = 110% speed = faster).
 
     Args:
         waveforms (torch.Tensor): The input waveforms. Shape [batch, time].
@@ -49,12 +49,15 @@ def speed_perturb(
     if speed_pct == 100:
         return waveforms
 
-    # Use integer percentage for good GCD with sample_rate
-    # e.g., 16000 * 90 // 100 = 14400, GCD(16000, 14400) = 1600
-    new_freq = sample_rate * speed_pct // 100
+    # round the speed ratio to 1 decimal place for better GCD with sample_rate.
+    # e.g., 100/90 = 1.111... → 1.1, so 16000 * 1.1 = 17600, GCD(16000,17600) = 1600
+    # this way we keep the correct semantics and have better resampling efficiency
+    ratio = round(100 / speed_pct, 1)
+    new_freq = int(sample_rate * ratio)
+
     device_str = str(waveforms.device)
     resampler = _get_resampler(sample_rate, new_freq, device_str)
-    
+
     return resampler(waveforms)
 
 
