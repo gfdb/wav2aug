@@ -1,18 +1,9 @@
 import pytest
 import torch
 
-from wav2aug.gpu import (
-    Wav2Aug,
-    add_babble_noise,
-    add_noise,
-    chunk_swap,
-    freq_drop,
-    invert_polarity,
-    rand_amp_clip,
-    rand_amp_scale,
-    speed_perturb,
-    time_dropout,
-)
+from wav2aug.gpu import (Wav2Aug, Wav2AugViews, add_babble_noise, add_noise,
+                         chunk_swap, freq_drop, invert_polarity, rand_amp_clip,
+                         rand_amp_scale, speed_perturb, time_dropout)
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -138,3 +129,82 @@ def test_wav2aug_runs_with_stubbed_noise(monkeypatch):
     out_wave, out_lengths = aug(waveforms, lengths=lengths)
     assert out_wave.shape[0] == waveforms.shape[0]
     assert out_lengths.data_ptr() == lengths.data_ptr()
+
+
+# --- Wav2AugViews tests ---
+
+
+def test_wav2aug_views_invalid_views_raises():
+    aug = Wav2Aug(sample_rate=16_000)
+    with pytest.raises(ValueError, match="views must be >= 2"):
+        Wav2AugViews(aug, views=1)
+
+
+def test_wav2aug_views_output_shape(monkeypatch):
+    def _noop_add_noise(waveforms, sample_rate, **kwargs):
+        return waveforms
+
+    monkeypatch.setattr("wav2aug.gpu.wav2aug.add_noise", _noop_add_noise)
+
+    aug = Wav2Aug(sample_rate=16_000)
+    views_aug = Wav2AugViews(aug, views=3)
+
+    waveforms = _waveforms(batch=4, time=256)
+    out = views_aug(waveforms)
+
+    # Output should be batch * views
+    assert out.shape[0] == 4 * 3
+
+
+def test_wav2aug_views_original_unaugmented(monkeypatch):
+    """The first `batch` samples should be the unaugmented originals."""
+
+    def _noop_add_noise(waveforms, sample_rate, **kwargs):
+        return waveforms
+
+    monkeypatch.setattr("wav2aug.gpu.wav2aug.add_noise", _noop_add_noise)
+
+    # Use identity-like augmentations by setting up a custom augmenter
+    # that always applies invert_polarity with prob=1.0
+    aug = Wav2Aug(sample_rate=16_000)
+    views_aug = Wav2AugViews(aug, views=2)
+
+    waveforms = _waveforms(batch=2, time=128)
+    original = waveforms.clone()
+    out = views_aug(waveforms)
+
+    # First `batch` samples should match original exactly
+    assert torch.allclose(out[:2], original)
+
+
+def test_wav2aug_views_lengths_adjusted(monkeypatch):
+    """Lengths should be adjusted when time dimension changes."""
+
+    def _noop_add_noise(waveforms, sample_rate, **kwargs):
+        return waveforms
+
+    monkeypatch.setattr("wav2aug.gpu.wav2aug.add_noise", _noop_add_noise)
+
+    aug = Wav2Aug(sample_rate=16_000)
+    views_aug = Wav2AugViews(aug, views=2)
+
+    waveforms = _waveforms(batch=3, time=256)
+    lengths = torch.tensor([0.5, 0.75, 1.0], device=DEVICE, dtype=torch.float32)
+
+    out_wave, out_lengths = views_aug(waveforms, lengths=lengths)
+
+    # Output lengths should have batch * views elements
+    assert out_lengths.shape[0] == 3 * 2
+    # All lengths should be in valid range (0, 1]
+    assert (out_lengths > 0).all()
+    assert (out_lengths <= 1).all()
+
+
+def test_wav2aug_views_empty_input():
+    aug = Wav2Aug(sample_rate=16_000)
+    views_aug = Wav2AugViews(aug, views=2)
+
+    waveforms = torch.empty(0, 256, device=DEVICE, dtype=torch.float32)
+    out = views_aug(waveforms)
+
+    assert out.shape == (0, 256)

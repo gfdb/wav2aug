@@ -6,7 +6,7 @@ from .noise_addition import NoiseLoader, add_babble_noise, add_noise
 from .polarity_inversion import invert_polarity
 from .speed_perturbation import speed_perturb
 from .time_dropout import time_dropout
-from .wav2aug import Wav2Aug
+from .wav2aug import Wav2Aug, Wav2AugViews
 
 __all__ = [
     "rand_amp_clip",
@@ -20,4 +20,5 @@ __all__ = [
     "speed_perturb",
     "time_dropout",
     "Wav2Aug",
+    "Wav2AugViews",
 ]
