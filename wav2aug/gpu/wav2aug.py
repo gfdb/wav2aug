@@ -114,7 +114,7 @@ class Wav2AugViews:
     def __init__(
         self,
         augmenter: Wav2Aug,
-        views: int = 2,
+        views: int = 4,
     ) -> None:
         """Initialize Wav2AugViews.
 
