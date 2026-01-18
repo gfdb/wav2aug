@@ -22,6 +22,7 @@ class Wav2Aug:
         sample_rate: int,
         noise_dir: str | None = None,
         noise_preload: bool = True,
+        top_k: int | None = None,
     ) -> None:
         """Initialize Wav2Aug.
 
@@ -31,6 +32,11 @@ class Wav2Aug:
                 default cached noise pack (auto-downloaded if needed).
             noise_preload: If True (default), preload all noise files into CPU RAM
                 at initialization for fast sampling. If False, load files on-demand.
+            top_k: Number of top augmentations to use, ordered by effectiveness.
+                If None, all 9 augmentations are used. Common values: 3, 6, or 9.
+                Order (best to worst): Noise Addition, Freq Drop, Time Drop,
+                Speed Perturb, Amp Clip, Chunk Swap, Babble Noise, Amp Scale,
+                Polarity Inversion.
         """
         self.sample_rate = int(sample_rate)
 
@@ -41,23 +47,33 @@ class Wav2Aug:
             noise_dir = ensure_pack("pointsource_noises")
         self._noise_loader = NoiseLoader(noise_dir, sample_rate, preload=noise_preload)
 
-        self._base_ops: List[
-            Callable[[torch.Tensor, torch.Tensor | None], torch.Tensor]
-        ] = [
+        # All ops ordered by effectiveness (best first)
+        all_ops: List[Callable[[torch.Tensor, torch.Tensor | None], torch.Tensor]] = [
+            # top 3
             lambda x, lengths: add_noise(
                 x, self._noise_loader, snr_low=0.0, snr_high=10.0
             ),
-            lambda x, lengths: add_babble_noise(x),
-            lambda x, lengths: chunk_swap(x),
             lambda x, lengths: freq_drop(x),
-            lambda x, lengths: invert_polarity(x),
-            lambda x, lengths: rand_amp_clip(x),
-            lambda x, lengths: rand_amp_scale(x),
-            lambda x, lengths: speed_perturb(x, sample_rate=self.sample_rate),
             lambda x, lengths: time_dropout(
                 x, sample_rate=self.sample_rate, lengths=lengths
             ),
+            # top 6
+            lambda x, lengths: speed_perturb(x, sample_rate=self.sample_rate),
+            lambda x, lengths: rand_amp_clip(x),
+            lambda x, lengths: chunk_swap(x),
+            # all 9
+            lambda x, lengths: add_babble_noise(x),
+            lambda x, lengths: rand_amp_scale(x),
+            lambda x, lengths: invert_polarity(x),
         ]
+
+        # select top-k ops
+        if top_k is None:
+            top_k = len(all_ops)
+        if top_k < 1 or top_k > len(all_ops):
+            raise ValueError(f"top_k must be between 1 and {len(all_ops)}, got {top_k}")
+
+        self._base_ops = all_ops[:top_k]
 
     @torch.no_grad()
     def __call__(
