@@ -119,6 +119,25 @@ class Wav2Aug:
             waveforms = op(waveforms, lengths)
         return waveforms if lengths is None else (waveforms, lengths)
 
+    def replicate_labels(
+        self,
+        labels: torch.Tensor,
+        deep: bool = True,
+    ) -> torch.Tensor:
+        """Replicate labels to match the augmented batch.
+
+        Since Wav2Aug does not change the batch size, this simply returns
+        the labels as-is, mainly for API compatibility with Wav2AugViews.
+
+        Args:
+            labels: Labels tensor of shape [batch, ...].
+            deep: Ignored for Wav2Aug (kept for API compatibility).
+
+        Returns:
+            The same labels tensor unchanged.
+        """
+        return labels
+
 
 class Wav2AugViews:
     """Creates multiple views of a batch: one unaugmented original plus augmented copies.
@@ -212,6 +231,34 @@ class Wav2AugViews:
             return out_waveforms, out_lengths
 
         return out_waveforms
+
+    def replicate_labels(
+        self,
+        labels: torch.Tensor,
+        deep: bool = True,
+    ) -> torch.Tensor:
+        """Replicate labels to match the multi-view batch.
+
+        The output will have labels repeated `views` times along the batch
+        dimension to match the output of __call__.
+
+        Args:
+            labels: Labels tensor of shape [batch, ...].
+            deep: If True (default), creates a contiguous copy of the repeated
+                labels. If False, returns an expanded view that shares storage
+                with the original tensor (saves memory but modifications affect
+                all copies).
+
+        Returns:
+            Labels tensor of shape [batch * views, ...].
+        """
+        if deep:
+            return labels.repeat(self._views, *([1] * (labels.ndim - 1)))
+        else:
+            expanded = labels.unsqueeze(0).expand(
+                self._views, *labels.shape
+            )
+            return expanded.reshape(-1, *labels.shape[1:])
 
 
 __all__ = ["Wav2Aug", "Wav2AugViews"]
