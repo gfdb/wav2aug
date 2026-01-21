@@ -23,6 +23,7 @@ class Wav2Aug:
         noise_dir: str | None = None,
         noise_preload: bool = True,
         top_k: int | None = None,
+        noise_dtype: torch.dtype = torch.float32,
     ) -> None:
         """Initialize Wav2Aug.
 
@@ -39,13 +40,16 @@ class Wav2Aug:
                 Polarity Inversion.
         """
         self.sample_rate = int(sample_rate)
+        self.noise_dtype = noise_dtype
 
         # Initialize noise loader
         if noise_dir is None:
             from wav2aug.data.fetch import ensure_pack
 
             noise_dir = ensure_pack("pointsource_noises")
-        self._noise_loader = NoiseLoader(noise_dir, sample_rate, preload=noise_preload)
+        self._noise_loader = NoiseLoader(
+            noise_dir, sample_rate, preload=noise_preload, storage_dtype=noise_dtype
+        )
 
         # All ops ordered by effectiveness (best first)
         all_ops: List[Callable[[torch.Tensor, torch.Tensor | None], torch.Tensor]] = [
