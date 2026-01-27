@@ -167,7 +167,9 @@ def freq_drop(
     drop_frequencies = (
         torch.rand(band_count, device=device, dtype=dtype) * rng + bound_low
     )
-    drop_frequencies = drop_frequencies.clamp(min=1e-12)
+    # Ensure freq + 2*width <= 1 to satisfy _notch_filter internals
+    max_freq = max(1e-12, 1.0 - 2.0 * width - 1e-6)
+    drop_frequencies = drop_frequencies.clamp(min=1e-12, max=max_freq)
 
     for i in range(band_count):
         freq = drop_frequencies[i].item()
