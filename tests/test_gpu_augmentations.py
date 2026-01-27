@@ -173,8 +173,12 @@ def test_wav2aug_views_original_unaugmented(monkeypatch):
     original = waveforms.clone()
     out = views_aug(waveforms)
 
-    # First `batch` samples should match original exactly
-    assert torch.allclose(out[:2], original)
+    # First `batch` samples should match original for the original time span
+    orig_time = original.shape[1]
+    assert torch.allclose(out[:2, :orig_time], original)
+    # If padded, the extra region should be zeros
+    if out.shape[1] > orig_time:
+        assert torch.allclose(out[:2, orig_time:], torch.zeros_like(out[:2, orig_time:]))
 
 
 def test_wav2aug_views_lengths_adjusted(monkeypatch):
