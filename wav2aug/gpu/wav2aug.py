@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Callable, List
 
 import torch
+import torch.nn.functional as F
 
 from .amplitude_clipping import rand_amp_clip
 from .amplitude_scaling import rand_amp_scale
@@ -79,6 +80,9 @@ class Wav2Aug:
 
         self._base_ops = all_ops[:top_k]
 
+        # Track length ratio from last call (for transform_labels)
+        self._length_ratio: float = 1.0
+
     @torch.no_grad()
     def __call__(
         self,
@@ -111,6 +115,8 @@ class Wav2Aug:
             if lengths.device != waveforms.device:
                 raise AssertionError("lengths tensor must share device with waveforms")
 
+        orig_len = waveforms.shape[-1]
+
         take = min(2, len(self._base_ops))
         indices = torch.randint(
             low=0,
@@ -121,6 +127,12 @@ class Wav2Aug:
         for idx in indices:
             op = self._base_ops[idx]
             waveforms = op(waveforms, lengths)
+
+        # Track length change (e.g., from speed perturbation)
+        new_len = waveforms.shape[-1]
+
+        self._length_ratio = new_len / orig_len
+
         return waveforms if lengths is None else (waveforms, lengths)
 
     def replicate_labels(
@@ -141,6 +153,34 @@ class Wav2Aug:
             The same labels tensor unchanged.
         """
         return labels
+
+    def transform_frame_labels(
+        self,
+        labels: torch.Tensor,
+    ) -> torch.Tensor:
+        """Resize frame-level labels to match augmented audio length.
+
+        Use this after calling the augmenter when augmentations may change
+        the audio length (e.g., speed perturbation). Uses nearest-neighbor
+        interpolation to preserve binary label values.
+
+        Args:
+            labels: Frame-level labels of shape [batch, num_frames].
+
+        Returns:
+            Transformed labels with length matching the augmented audio.
+        """
+
+        if labels.ndim != 2:
+            raise AssertionError("expected labels shaped [batch, num_frames]")
+
+        if self._length_ratio == 1.0:
+            return labels
+
+        new_len = int(labels.shape[-1] * self._length_ratio)
+        labels = labels.unsqueeze(1).float()
+        labels = F.interpolate(labels, size=new_len, mode="nearest")
+        return labels.squeeze(1)
 
 
 class Wav2AugViews:
