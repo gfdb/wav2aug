@@ -138,3 +138,33 @@ def test_wav2aug_runs_with_stubbed_noise(monkeypatch):
     out_wave, out_lengths = aug(waveforms, lengths=lengths)
     assert out_wave.shape[0] == waveforms.shape[0]
     assert out_lengths.data_ptr() == lengths.data_ptr()
+
+
+def test_wav2aug_top_k_limits_ops(monkeypatch):
+    """Test that top_k limits the number of augmentations used."""
+
+    def _noop_add_noise(waveforms, loader, **kwargs):
+        return waveforms
+
+    monkeypatch.setattr("wav2aug.gpu.wav2aug.add_noise", _noop_add_noise)
+
+    # top_k=3 should only include: noise, freq_drop, time_dropout
+    aug = Wav2Aug(sample_rate=16_000, top_k=3)
+    assert len(aug._base_ops) == 3
+
+    # top_k=6 should include: noise, freq_drop, time_dropout, speed_perturb, amp_clip, chunk_swap
+    aug = Wav2Aug(sample_rate=16_000, top_k=6)
+    assert len(aug._base_ops) == 6
+
+    # no pass should include all 9
+    aug = Wav2Aug(sample_rate=16_000)
+    assert len(aug._base_ops) == 9
+
+
+def test_wav2aug_top_k_invalid_raises():
+    """Test that invalid top_k values raise ValueError."""
+    with pytest.raises(ValueError, match="top_k must be between 1 and 9"):
+        Wav2Aug(sample_rate=16_000, top_k=0)
+
+    with pytest.raises(ValueError, match="top_k must be between 1 and 9"):
+        Wav2Aug(sample_rate=16_000, top_k=10)
