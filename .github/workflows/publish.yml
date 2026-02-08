@@ -15,9 +15,9 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: 
-  name: ${{ github.event.inputs.environment }}
-  url: ${{ github.event.inputs.environment == 'pypi' && 'https://pypi.org/p/wav2aug' || 'https://test.pypi.org/p/wav2aug' }}
+    environment:
+      name: ${{ github.event.inputs.environment }}
+      url: ${{ github.event.inputs.environment == 'pypi' && 'https://pypi.org/p/wav2aug' || 'https://test.pypi.org/p/wav2aug' }}
     permissions:
       id-token: write
       contents: read
