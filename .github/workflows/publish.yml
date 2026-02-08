@@ -1,8 +1,6 @@
 name: Publish to PyPI
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       environment:
@@ -17,9 +15,9 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: 
-      name: ${{ github.event_name == 'release' && 'pypi' || github.event.inputs.environment }}
-      url: ${{ github.event_name == 'release' && 'https://pypi.org/p/wav2aug' || 'https://test.pypi.org/p/wav2aug' }}
+    environment:
+      name: ${{ github.event.inputs.environment }}
+      url: ${{ github.event.inputs.environment == 'pypi' && 'https://pypi.org/p/wav2aug' || 'https://test.pypi.org/p/wav2aug' }}
     permissions:
       id-token: write
       contents: read
@@ -39,14 +37,14 @@ jobs:
         run: uv build
 
       - name: Publish to Test PyPI
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'testpypi'
+        if: github.event.inputs.environment == 'testpypi'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
           verbose: true
 
       - name: Publish to PyPI
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pypi')
+        if: github.event.inputs.environment == 'pypi'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           verbose: true
