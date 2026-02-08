@@ -63,25 +63,21 @@ def test_freq_drop_no_nan_and_inplace():
     assert torch.isnan(out).logical_not().all()
 
 
-def test_add_noise_with_stub(monkeypatch):
-    def _stub_noise_like(ref, sample_rate, noise_dir):
-        return torch.zeros_like(ref)
+def test_add_noise_with_mock_loader():
+    """Test add_noise with a mock NoiseLoader."""
+    from unittest.mock import MagicMock
 
-    monkeypatch.setattr(
-        "wav2aug.gpu.noise_addition._sample_noise_like", _stub_noise_like
-    )
     waveforms = torch.ones(2, 128, device=DEVICE, dtype=torch.float32)
     ptr = waveforms.data_ptr()
-    out = add_noise(
-        waveforms,
-        16_000,  # sample_rate as positional argument
-        snr_low=0.0,
-        snr_high=0.0,
-        download=False,
-        noise_dir="ignored",
-    )
+
+    # Create mock loader that returns zeros
+    mock_loader = MagicMock()
+    mock_loader.get_batch.return_value = torch.zeros(2, 128)
+
+    out = add_noise(waveforms, mock_loader, snr_low=0.0, snr_high=0.0)
     assert out.data_ptr() == ptr
     assert torch.isfinite(out).all()
+    mock_loader.get_batch.assert_called_once_with(2, 128)
 
 
 def test_add_babble_noise_identity_for_singleton_batch():
@@ -127,7 +123,7 @@ def test_time_dropout_zeroes_segments():
 
 
 def test_wav2aug_runs_with_stubbed_noise(monkeypatch):
-    def _noop_add_noise(waveforms, sample_rate, **kwargs):
+    def _noop_add_noise(waveforms, loader, **kwargs):
         return waveforms
 
     monkeypatch.setattr("wav2aug.gpu.wav2aug.add_noise", _noop_add_noise)
@@ -168,3 +164,22 @@ def test_wav2aug_top_k_invalid_raises():
 
     with pytest.raises(ValueError, match="top_k must be between 1 and 9"):
         Wav2Aug(sample_rate=16_000, top_k=10)
+
+
+def test_wav2aug_noise_dtype(monkeypatch):
+    """Test that noise_dtype is passed to NoiseLoader."""
+
+    def _noop_add_noise(waveforms, loader, **kwargs):
+        return waveforms
+
+    monkeypatch.setattr("wav2aug.gpu.wav2aug.add_noise", _noop_add_noise)
+
+    # Default should be float32
+    aug = Wav2Aug(sample_rate=16_000)
+    assert aug.noise_dtype == torch.float32
+    assert aug._noise_loader.storage_dtype == torch.float32
+
+    # Custom dtype should be passed through
+    aug = Wav2Aug(sample_rate=16_000, noise_dtype=torch.float16)
+    assert aug.noise_dtype == torch.float16
+    assert aug._noise_loader.storage_dtype == torch.float16

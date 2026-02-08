@@ -21,8 +21,8 @@ class Wav2Aug:
         self,
         sample_rate: int,
         noise_dir: str | None = None,
-        noise_preload: bool = True,
         top_k: int = 9,
+        noise_dtype: torch.dtype = torch.float32,
     ) -> None:
         """Initialize Wav2Aug.
 
@@ -30,22 +30,25 @@ class Wav2Aug:
             sample_rate: Audio sample rate in Hz.
             noise_dir: Directory containing noise files. If None, will use the
                 default cached noise pack (auto-downloaded if needed).
-            noise_preload: If True (default), preload all noise files into CPU RAM
-                at initialization for fast sampling. If False, load files on-demand.
             top_k: Number of top augmentations to use, ordered by effectiveness.
                 Default is 9 (all augmentations). Common values: 3, 6, or 9.
                 Order (best to worst): Noise Addition, Freq Drop, Time Drop,
                 Speed Perturb, Amp Clip, Chunk Swap, Babble Noise, Amp Scale,
                 Polarity Inversion.
+            noise_dtype: Data type for storing preloaded noise in memory.
+                Defaults to float32. Use float16 for memory efficiency.
         """
         self.sample_rate = int(sample_rate)
+        self.noise_dtype = noise_dtype
 
         # Initialize noise loader
         if noise_dir is None:
             from wav2aug.data.fetch import ensure_pack
 
             noise_dir = ensure_pack("pointsource_noises")
-        self._noise_loader = NoiseLoader(noise_dir, sample_rate, preload=noise_preload)
+        self._noise_loader = NoiseLoader(
+            noise_dir, sample_rate, storage_dtype=noise_dtype
+        )
 
         # All ops ordered by effectiveness (best first)
         all_ops: List[Callable[[torch.Tensor, torch.Tensor | None], torch.Tensor]] = [
