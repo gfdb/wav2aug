@@ -1,6 +1,7 @@
 from .amplitude_clipping import rand_amp_clip
 from .amplitude_scaling import rand_amp_scale
 from .chunk_swapping import chunk_swap
+from .experimental import Wav2AugGrouped
 from .frequency_dropout import freq_drop
 from .noise_addition import NoiseLoader, add_babble_noise, add_noise
 from .polarity_inversion import invert_polarity
@@ -20,4 +21,5 @@ __all__ = [
     "speed_perturb",
     "time_dropout",
     "Wav2Aug",
+    "Wav2AugGrouped",
 ]
