@@ -159,24 +159,30 @@ def freq_drop(
     _FILTER_LEN: Final[int] = 101
     _PAD: Final[int] = _FILTER_LEN // 2
 
-    # Start with delta function (identity filter)
-    drop_filter = torch.zeros(1, _FILTER_LEN, 1, device=device, dtype=dtype)
+    # always use float32 for filter construction to avoid precision issues
+    # (e.g. 1e-12 clamp rounds to 0.0 in float16, violating notch_freq > 0)
+    filter_dtype = torch.float32
+
+    # start with delta function (identity filter)
+    drop_filter = torch.zeros(1, _FILTER_LEN, 1, device=device, dtype=filter_dtype)
     drop_filter[0, _PAD, 0] = 1.0
 
-    # Sample frequencies and build composite filter by convolving notch kernels
+    # sample frequencies and build composite filter by convolving notch kernels
     drop_frequencies = (
-        torch.rand(band_count, device=device, dtype=dtype) * rng + bound_low
+        torch.rand(band_count, device=device, dtype=filter_dtype) * rng + bound_low
     )
-    # Ensure freq + 2*width <= 1 to satisfy _notch_filter internals
+
     max_freq = max(1e-12, 1.0 - 2.0 * width - 1e-6)
     drop_frequencies = drop_frequencies.clamp(min=1e-12, max=max_freq)
 
     for i in range(band_count):
         freq = drop_frequencies[i].item()
-        notch_kernel = _notch_filter(freq, _FILTER_LEN, width, device, dtype)
+        notch_kernel = _notch_filter(freq, _FILTER_LEN, width, device, filter_dtype)
         drop_filter = _convolve1d(drop_filter, notch_kernel, _PAD)
 
-    # Apply filter to entire batch at once
+    drop_filter = drop_filter.to(dtype)
+
+    # apply filter to entire batch at once
     # waveforms: [B, T] -> [B, T, 1] for _convolve1d
     dropped = waveforms.unsqueeze(-1)
     dropped = _convolve1d(dropped, drop_filter, _PAD)
@@ -187,7 +193,6 @@ def freq_drop(
 
     dropped = torch.nan_to_num(dropped, nan=0.0, posinf=0.0, neginf=0.0)
 
-    # Copy result back (in-place semantics)
     waveforms.copy_(dropped)
     return waveforms
 
