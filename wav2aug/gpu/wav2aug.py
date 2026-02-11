@@ -305,4 +305,183 @@ class Wav2AugViews:
             return expanded.reshape(-1, *labels.shape[1:])
 
 
-__all__ = ["Wav2Aug", "Wav2AugViews"]
+class Wav2AugWeighted:
+    """Applies two random augmentations weighted by effectiveness z-scores.
+
+    Instead of sampling augmentations uniformly like :class:`Wav2Aug`, this
+    class applies a softmax over empirical z-scores to produce sampling
+    weights.  A temperature parameter ``tau`` controls the sharpness of the
+    distribution: lower values concentrate probability on the strongest
+    augmentations, higher values approach uniform sampling.
+
+    Default z-scores (global, across tasks):
+
+    ============== ========
+    Augmentation   z-score
+    ============== ========
+    Noise Addition  1.51
+    Freq Drop       1.26
+    Time Drop       0.97
+    Speed Perturb   0.46
+    Amp Clip        0.41
+    Chunk Swap      0.40
+    Babble Noise    0.33
+    Rand Amp       −0.64
+    Sign Flip      −0.70
+    ============== ========
+    """
+
+    # Ordered to match the ops list below
+    _DEFAULT_ZSCORES: List[float] = [
+        1.51,   # noise addition
+        1.26,   # freq drop
+        0.97,   # time drop
+        0.46,   # speed perturb
+        0.41,   # amp clip
+        0.40,   # chunk swap
+        0.33,   # babble noise
+        -0.64,  # rand amp
+        -0.70,  # sign flip
+    ]
+
+    def __init__(
+        self,
+        sample_rate: int,
+        noise_dir: str | None = None,
+        noise_preload: bool = True,
+        tau: float = 1.0,
+        noise_dtype: torch.dtype = torch.float32,
+    ) -> None:
+        """Initialize Wav2AugWeighted.
+
+        Args:
+            sample_rate: Audio sample rate in Hz.
+            noise_dir: Directory containing noise files.  If None, uses the
+                default cached noise pack (auto-downloaded if needed).
+            noise_preload: If True (default), preload all noise files into CPU
+                RAM at initialization for fast sampling.
+            tau: Softmax temperature.  Default ``1.0``.  Lower values sharpen
+                the distribution toward the best augmentations; higher values
+                flatten it toward uniform.
+            noise_dtype: Data type for storing preloaded noise in memory.
+        """
+        self.sample_rate = int(sample_rate)
+        self.tau = float(tau)
+        self.noise_dtype = noise_dtype
+
+        # Initialize noise loader
+        if noise_dir is None:
+            from wav2aug.data.fetch import ensure_pack
+
+            noise_dir = ensure_pack("pointsource_noises")
+        self._noise_loader = NoiseLoader(
+            noise_dir, sample_rate, preload=noise_preload, storage_dtype=noise_dtype
+        )
+
+        # All 9 ops, same order as _DEFAULT_ZSCORES
+        self._ops: List[Callable[[torch.Tensor, torch.Tensor | None], torch.Tensor]] = [
+            lambda x, lengths: add_noise(
+                x, self._noise_loader, snr_low=0.0, snr_high=10.0
+            ),
+            lambda x, lengths: freq_drop(x),
+            lambda x, lengths: time_dropout(
+                x, sample_rate=self.sample_rate, lengths=lengths
+            ),
+            lambda x, lengths: speed_perturb(x, sample_rate=self.sample_rate),
+            lambda x, lengths: rand_amp_clip(x),
+            lambda x, lengths: chunk_swap(x),
+            lambda x, lengths: add_babble_noise(x),
+            lambda x, lengths: rand_amp_scale(x),
+            lambda x, lengths: invert_polarity(x),
+        ]
+
+        # Compute softmax weights from z-scores
+        zscores = torch.tensor(self._DEFAULT_ZSCORES, dtype=torch.float64)
+        self._weights = torch.softmax(zscores / self.tau, dim=0)
+
+        # Track length ratio from last call (for transform_labels)
+        self._length_ratio: float = 1.0
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        waveforms: torch.Tensor,
+        lengths: torch.Tensor | None = None,
+    ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
+        """Applies two augmentations sampled by z-score weights.
+
+        Args:
+            waveforms: Input waveforms of shape [batch, time].
+            lengths: Optional relative lengths of shape [batch].
+
+        Returns:
+            Augmented waveforms (and lengths if provided).
+        """
+        if waveforms.ndim != 2:
+            raise AssertionError("expected waveforms shaped [batch, time]")
+
+        if waveforms.numel() == 0:
+            return waveforms if lengths is None else (waveforms, lengths)
+
+        if lengths is not None:
+            if lengths.ndim != 1 or lengths.numel() != waveforms.size(0):
+                raise AssertionError("expected lengths shaped [batch]")
+            if lengths.device != waveforms.device:
+                raise AssertionError("lengths tensor must share device with waveforms")
+
+        orig_len = waveforms.shape[-1]
+
+        # Sample 2 augmentation indices weighted by softmax(z-scores / tau)
+        indices = torch.multinomial(
+            self._weights, num_samples=2, replacement=False
+        ).tolist()
+
+        for idx in indices:
+            op = self._ops[idx]
+            waveforms = op(waveforms, lengths)
+
+        # Track length change (e.g., from speed perturbation)
+        new_len = waveforms.shape[-1]
+        self._length_ratio = new_len / orig_len
+
+        return waveforms if lengths is None else (waveforms, lengths)
+
+    def replicate_labels(
+        self,
+        labels: torch.Tensor,
+        deep: bool = True,
+    ) -> torch.Tensor:
+        """Replicate labels to match the augmented batch.
+
+        Since Wav2AugWeighted does not change the batch size, this simply
+        returns the labels as-is, for API compatibility with Wav2AugViews.
+        """
+        return labels
+
+    def transform_frame_labels(
+        self,
+        labels: torch.Tensor,
+    ) -> torch.Tensor:
+        """Resize frame-level labels to match augmented audio length.
+
+        Uses nearest-neighbor interpolation to preserve binary label values.
+
+        Args:
+            labels: Frame-level labels of shape [batch, num_frames].
+
+        Returns:
+            Transformed labels with length matching the augmented audio.
+        """
+        if labels.ndim != 2:
+            raise AssertionError("expected labels shaped [batch, num_frames]")
+
+        if self._length_ratio == 1.0:
+            return labels
+
+        new_len = int(labels.shape[-1] * self._length_ratio)
+        labels = labels.unsqueeze(1).float()
+        labels = F.interpolate(labels, size=new_len, mode="nearest")
+        return labels.squeeze(1)
+
+
+__all__ = ["Wav2Aug", "Wav2AugViews", "Wav2AugWeighted"]
