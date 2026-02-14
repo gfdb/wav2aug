@@ -194,18 +194,26 @@ class Wav2AugViews:
         self,
         augmenter: Wav2Aug,
         views: int = 4,
+        include_original: bool = True,
     ) -> None:
         """Initialize Wav2AugViews.
 
         Args:
             augmenter: A Wav2Aug instance used to augment each copy.
-            views: Total number of views to produce (including the original).
-                Must be >= 2. For example, views=2 means 1 original + 1 augmented.
+            views: Total number of views to produce. Must be >= 2.
+                When ``include_original=True`` (default), this includes the
+                unaugmented original (e.g., views=2 -> 1 original + 1 augmented).
+                When ``include_original=False``, all views are independently
+                augmented (e.g., views=2 -> 2 augmented).
+            include_original: If True (default), the first view is the
+                unaugmented original. If False, every view receives an
+                independent augmentation pass.
         """
         if views < 2:
             raise ValueError("views must be >= 2")
         self._augmenter = augmenter
         self._views = views
+        self._include_original = include_original
 
     @torch.no_grad()
     def __call__(
@@ -221,7 +229,9 @@ class Wav2AugViews:
 
         Returns:
             Waveforms of shape [batch * views, max_time] and optionally updated lengths.
-            The first `batch` samples are the unaugmented originals.
+            When ``include_original=True``, the first ``batch`` samples are the
+            unaugmented originals. When ``include_original=False``, all samples
+            are independently augmented.
         """
         if waveforms.ndim != 2:
             raise AssertionError("expected waveforms shaped [batch, time]")
@@ -239,9 +249,15 @@ class Wav2AugViews:
         orig_time = original.shape[1]
 
         # Collect all views: (waveform, time_before_padding)
-        view_data: list[tuple[torch.Tensor, int]] = [(original, orig_time)]
+        view_data: list[tuple[torch.Tensor, int]] = []
 
-        for _ in range(self._views - 1):
+        if self._include_original:
+            view_data.append((original, orig_time))
+            num_augmented = self._views - 1
+        else:
+            num_augmented = self._views
+
+        for _ in range(num_augmented):
             copy = original.clone()
             augmented = self._augmenter(copy, lengths)
             # Handle case where augmenter returns tuple
