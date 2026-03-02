@@ -34,8 +34,12 @@ class Wav2Aug:
                 default cached noise pack (auto-downloaded if needed).
             noise_preload: If True (default), preload all noise files into CPU RAM
                 at initialization for fast sampling. If False, load files on-demand.
-            top_k: Number of top augmentations to use, ordered by effectiveness.
+            top_k: Number of augmentations to use, ordered by effectiveness.
                 If None, all 9 augmentations are used. Common values: 3, 6, or 9.
+                Positive values select the top-k most effective augmentations.
+                Negative values select the bottom-|k| least effective augmentations
+                (e.g., -1 selects only Polarity Inversion, -3 selects Babble Noise,
+                Amp Scale, and Polarity Inversion).
                 Order (best to worst): Noise Addition, Freq Drop, Time Drop,
                 Speed Perturb, Amp Clip, Chunk Swap, Babble Noise, Amp Scale,
                 Polarity Inversion.
@@ -72,13 +76,20 @@ class Wav2Aug:
             lambda x, lengths: invert_polarity(x),
         ]
 
-        # select top-k ops
+        # select ops
+        n = len(all_ops)
         if top_k is None:
-            top_k = len(all_ops)
-        if top_k < 1 or top_k > len(all_ops):
-            raise ValueError(f"top_k must be between 1 and {len(all_ops)}, got {top_k}")
-
-        self._base_ops = all_ops[:top_k]
+            self._base_ops = all_ops
+        elif top_k > 0:
+            if top_k > n:
+                raise ValueError(f"top_k must be between 1 and {n}, got {top_k}")
+            self._base_ops = all_ops[:top_k]
+        elif top_k < 0:
+            if abs(top_k) > n:
+                raise ValueError(f"top_k must be between -{n} and -1, got {top_k}")
+            self._base_ops = all_ops[top_k:]  # e.g. -3 -> last 3 items
+        else:
+            raise ValueError("top_k must not be 0")
 
         # Track length ratio from last call (for transform_labels)
         self._length_ratio: float = 1.0
