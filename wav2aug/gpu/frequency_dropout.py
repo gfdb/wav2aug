@@ -188,10 +188,9 @@ def freq_drop(
     dropped = dropped.squeeze(-1)
 
     if clamp_abs is not None and clamp_abs > 0:
-        dropped = dropped.clamp_(-clamp_abs, clamp_abs)
+        dropped = dropped.clamp(-clamp_abs, clamp_abs)
 
-    waveforms.copy_(dropped.to(dtype))
-    return waveforms
+    return dropped.to(dtype)
 
 
 __all__ = ["freq_drop"]

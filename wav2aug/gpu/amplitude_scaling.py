@@ -21,7 +21,7 @@ def rand_amp_scale(
         amp_high: Maximum amplitude scale factor.
 
     Returns:
-        The input ``waveforms`` tensor, modified in-place.
+        Scaled waveforms.
     """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms shaped [batch, time]")
@@ -36,13 +36,12 @@ def rand_amp_scale(
     abs_max = waveforms.abs().amax(dim=1, keepdim=True)
     # Avoid division by zero for silent signals
     abs_max = abs_max.clamp_min(1e-14)
-    waveforms.div_(abs_max)
+    out = waveforms / abs_max
 
     # Per-sample scaling factors
     scales = torch.rand((waveforms.size(0), 1), device=device, dtype=dtype)
     scales = scales * (amp_high - amp_low) + amp_low
-    waveforms.mul_(scales)
-    return waveforms
+    return out * scales
 
 
 __all__ = ["rand_amp_scale"]

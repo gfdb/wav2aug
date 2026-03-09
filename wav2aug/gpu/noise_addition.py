@@ -167,14 +167,9 @@ def _mix_noise(
     signal_rms = waveforms.pow(2).mean(dim=1, keepdim=True).sqrt().clamp_min(_EPS)
     noise_rms = noise.pow(2).mean(dim=1, keepdim=True).sqrt().clamp_min(_EPS)
 
-    # Scale the clean signal by (1 - noise_amplitude_factor)
-    waveforms.mul_(1.0 - noise_amplitude_factor)
-
-    # Compute target noise amplitude and scale noise accordingly
+    # Mix signal and noise at target SNR
     noise_scale = (noise_amplitude_factor * signal_rms) / noise_rms
-    waveforms.add_(noise * noise_scale)
-
-    return waveforms
+    return waveforms * (1.0 - noise_amplitude_factor) + noise * noise_scale
 
 
 @torch.no_grad()

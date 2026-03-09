@@ -32,10 +32,10 @@ def invert_polarity(
 
     batch = waveforms.size(0)
 
+    # Build a per-sample sign multiplier: -1 for flipped, +1 for kept
     flips = torch.rand(batch, device=waveforms.device) < prob
-    if flips.any():
-        waveforms[flips] *= -1
-    return waveforms
+    signs = torch.where(flips, -1.0, 1.0).unsqueeze(1)
+    return waveforms * signs
 
 
 __all__ = ["invert_polarity"]
