@@ -56,7 +56,7 @@ def time_dropout(
         base_sample_rate: Reference sample rate for scaling chunk lengths.
 
     Returns:
-        Waveforms with time dropout applied (in-place modification).
+        Waveforms with time dropout applied.
 
     Raises:
         AssertionError: If waveforms are not 2D.
@@ -150,9 +150,7 @@ def time_dropout(
     drop_mask = chunk_mask.any(dim=1)  # [B, T]
 
     # Zero out masked positions
-    waveforms.masked_fill_(drop_mask, 0.0)
-
-    return waveforms
+    return waveforms.masked_fill(drop_mask, 0.0)
 
 
 __all__ = ["time_dropout"]

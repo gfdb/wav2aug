@@ -24,20 +24,16 @@ def _waveforms(
     return torch.randn(batch, time, device=DEVICE, dtype=dtype)
 
 
-def test_rand_amp_clip_inplace_preserves_shape():
+def test_rand_amp_clip_preserves_shape():
     waveforms = _waveforms()
-    ptr = waveforms.data_ptr()
     out = rand_amp_clip(waveforms)
-    assert out.data_ptr() == ptr
     assert out.shape == (waveforms.size(0), waveforms.size(1))
     assert torch.isfinite(out).all()
 
 
-def test_rand_amp_scale_inplace_preserves_shape():
+def test_rand_amp_scale_preserves_shape():
     waveforms = _waveforms()
-    ptr = waveforms.data_ptr()
     out = rand_amp_scale(waveforms)
-    assert out.data_ptr() == ptr
     assert out.shape == (waveforms.size(0), waveforms.size(1))
     assert torch.isfinite(out).all()
 
@@ -55,11 +51,9 @@ def test_chunk_swap_outputs_permutation():
     )
 
 
-def test_freq_drop_no_nan_and_inplace():
+def test_freq_drop_no_nan():
     waveforms = _waveforms()
-    ptr = waveforms.data_ptr()
     out = freq_drop(waveforms)
-    assert out.data_ptr() == ptr
     assert torch.isnan(out).logical_not().all()
 
 
@@ -83,23 +77,19 @@ def test_add_noise_with_mock_loader():
     from unittest.mock import MagicMock
 
     waveforms = torch.ones(2, 128, device=DEVICE, dtype=torch.float32)
-    ptr = waveforms.data_ptr()
 
     # Create mock loader that returns zeros
     mock_loader = MagicMock()
     mock_loader.get_batch.return_value = torch.zeros(2, 128)
 
     out = add_noise(waveforms, mock_loader, snr_low=0.0, snr_high=0.0)
-    assert out.data_ptr() == ptr
     assert torch.isfinite(out).all()
     mock_loader.get_batch.assert_called_once_with(2, 128)
 
 
 def test_add_babble_noise_identity_for_singleton_batch():
     waveforms = torch.full((1, 64), 2.0, device=DEVICE, dtype=torch.float32)
-    ptr = waveforms.data_ptr()
     out = add_babble_noise(waveforms, snr_low=0.0, snr_high=0.0)
-    assert out.data_ptr() == ptr
     assert torch.allclose(out, torch.full_like(out, 2.0))
 
 
@@ -123,7 +113,6 @@ def test_speed_perturb_adjusts_length():
 def test_time_dropout_zeroes_segments():
     waveforms = torch.ones(2, 64, device=DEVICE, dtype=torch.float32)
     lengths = torch.ones(2, device=DEVICE, dtype=torch.float32)
-    ptr = waveforms.data_ptr()
     out = time_dropout(
         waveforms,
         lengths=lengths,
@@ -132,7 +121,6 @@ def test_time_dropout_zeroes_segments():
         chunk_size_low=2,
         chunk_size_high=2,
     )
-    assert out.data_ptr() == ptr
     zeros_per_row = (out == 0).sum(dim=1)
     assert torch.all(zeros_per_row >= 2)
 

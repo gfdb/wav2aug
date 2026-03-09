@@ -23,7 +23,7 @@ def rand_amp_clip(
         eps: Numerical floor to avoid division by zero.
 
     Returns:
-        The input ``waveforms`` tensor, modified in-place.
+        Clipped waveforms.
     """
     if waveforms.ndim != 2:
         raise AssertionError("expected waveforms shaped [batch, time]")
@@ -37,7 +37,7 @@ def rand_amp_clip(
     # Normalize to [-1, 1] by absolute max
     abs_max = waveforms.abs().amax(dim=1, keepdim=True)
     abs_max = abs_max.clamp_min(eps)
-    waveforms.div_(abs_max)
+    out = waveforms / abs_max
 
     # Single clip value for entire batch (matches SpeechBrain)
     clip = torch.rand(1, device=device, dtype=dtype)
@@ -45,11 +45,11 @@ def rand_amp_clip(
     clip = clip.clamp_min(eps)
 
     # Apply clipping
-    waveforms.clamp_(-clip, clip)
+    out = out.clamp(-clip, clip)
 
     # Restore amplitude scaled by clip factor
-    waveforms.mul_(abs_max / clip)
-    return waveforms
+    out = out * (abs_max / clip)
+    return out
 
 
 __all__ = ["rand_amp_clip"]
