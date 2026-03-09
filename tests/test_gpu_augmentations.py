@@ -63,6 +63,21 @@ def test_freq_drop_no_nan_and_inplace():
     assert torch.isnan(out).logical_not().all()
 
 
+@pytest.mark.parametrize(
+    "dtype",
+    [torch.bfloat16, torch.float8_e4m3fn, torch.float16],
+    ids=["bf16", "fp8", "fp16"],
+)
+def test_freq_drop_low_precision_dtypes(dtype):
+    try:
+        waveforms = _waveforms(dtype=torch.float32).to(dtype)
+    except RuntimeError:
+        pytest.skip(f"{dtype} not supported on {DEVICE}")
+    out = freq_drop(waveforms)
+    assert out.shape == waveforms.shape
+    assert out.dtype == dtype
+
+
 def test_add_noise_with_mock_loader():
     """Test add_noise with a mock NoiseLoader."""
     from unittest.mock import MagicMock
