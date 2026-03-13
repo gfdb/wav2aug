@@ -7,6 +7,7 @@ from .polarity_inversion import invert_polarity
 from .speed_perturbation import speed_perturb
 from .time_dropout import time_dropout
 from .wav2aug import Wav2Aug, Wav2AugViews, Wav2AugWeighted
+from .spec_aug import SpecAugment
 
 __all__ = [
     "rand_amp_clip",
@@ -22,4 +23,5 @@ __all__ = [
     "Wav2Aug",
     "Wav2AugViews",
     "Wav2AugWeighted",
+    "SpecAugment",
 ]
