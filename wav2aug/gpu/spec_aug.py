@@ -1,8 +1,9 @@
-from .time_dropout import time_dropout
+import torch
+
 from .frequency_dropout import freq_drop
 from .speed_perturbation import speed_perturb
+from .time_dropout import time_dropout
 
-import torch
 
 class SpecAugment:
 
@@ -15,9 +16,10 @@ class SpecAugment:
         waveforms: torch.Tensor,
         lengths: torch.Tensor | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]: 
-        time_dropped = time_dropout(waveforms, self.sample_rate, lengths = lengths)
-        freq_dropped = freq_drop(time_dropped)
-        return speed_perturb(freq_dropped, self.sample_rate) 
+        waveforms = time_dropout(waveforms, self.sample_rate, lengths = lengths)
+        waveforms = freq_drop(waveforms)
+        waveforms = speed_perturb(waveforms, self.sample_rate)
+        return waveforms if lengths is None else (waveforms, lengths)
     
     def replicate_labels(
         self,
