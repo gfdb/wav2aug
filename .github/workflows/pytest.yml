@@ -5,17 +5,53 @@ on:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: '3.10'
+            installer: pip
+          - os: ubuntu-latest
+            python: '3.12'
+            installer: uv
+          - os: macos-latest
+            python: '3.13'
+            installer: uv
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - name: System deps
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
+      - name: macOS system deps
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
       - uses: astral-sh/setup-uv@v4
-      - run: uv python install 3.10
-      - run: uv sync --all-extras --dev
-      - run: uv run pytest -q tests --maxfail=1 --disable-warnings
+      - run: uv build
+      - name: Install wheel in a fresh environment
+        shell: bash
+        run: |
+          python -m venv "$RUNNER_TEMP/wav2aug-test"
+          if [ "${{ matrix.installer }}" = "pip" ]; then
+            "$RUNNER_TEMP/wav2aug-test/bin/python" -m pip install dist/*.whl pytest
+            "$RUNNER_TEMP/wav2aug-test/bin/python" -m pip check
+          else
+            uv pip install --python "$RUNNER_TEMP/wav2aug-test/bin/python" dist/*.whl pytest
+            uv pip check --python "$RUNNER_TEMP/wav2aug-test/bin/python"
+          fi
+      - name: Test installed wheel outside the checkout
+        shell: bash
+        run: |
+          cp -R tests "$RUNNER_TEMP/wav2aug-tests"
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/wav2aug-test/bin/python" -m pytest -q wav2aug-tests
 

@@ -1,11 +1,27 @@
-# 🎛️ Wav2Aug: Task-Agnostic Waveform Augmentation Beyond ASR
+# Wav2Aug: A Drop-In Speech Augmentation Policy
 
-A minimalistic PyTorch-based audio augmentation library for speech augmentation. The goal of this library is to provide a general purpose speech augmentation policy that can be used on any task and perform reasonably well without having to tune augmentation hyperparameters. Just install, and start augmenting. Applies two random augmentations per call. Just install and start augmenting!
+A minimalistic PyTorch-based augmentation library for speech augmentation. The goal of this library is to provide a general purpose speech augmentation policy that can be used on any task and perform reasonably well without having to tune augmentation hyperparameters. Just install, and start augmenting. Applies two random augmentations per call. Just install and start augmenting!
 
 
 ![Diagram](https://raw.githubusercontent.com/gfdb/wav2aug/main/wav2aug.png)
 
 ## 📦 Installation
+
+Requires Python 3.10+ and FFmpeg shared libraries for TorchCodec audio decoding.
+Install FFmpeg before running the quick start:
+
+```bash
+# macOS (Homebrew)
+brew install ffmpeg
+
+# Ubuntu / Debian
+sudo apt-get update && sudo apt-get install -y ffmpeg
+```
+
+For Windows and other platforms, follow the
+[TorchCodec installation instructions](https://github.com/meta-pytorch/torchcodec#installing-torchcodec).
+If installing into an existing PyTorch environment, check TorchCodec's compatibility
+table for your PyTorch version.
 
 ### pip
 
@@ -40,6 +56,18 @@ aug_wavs = augmenter(wavs)
 ```
 
 That's it!
+
+By default, each call samples two distinct augmentations from the top six
+(`top_k=6`). Set `top_k=9` to sample from all nine augmentations.
+
+The first initialization downloads a roughly 569 MB noise archive from Hugging Face
+and preloads the decoded audio into RAM. Later initializations reuse the downloaded
+files. Set `WAV2AUG_DATA_DIR` before importing wav2aug to change the cache location
+(default: `~/.cache/wav2aug`), or supply your own audio directory to avoid downloading:
+
+```python
+augmenter = Wav2Aug(sample_rate=16000, noise_dir="/path/to/noise")
+```
 
 ## 🧪 Augmentation Types
 
@@ -109,10 +137,6 @@ pytest -q tests/
 
 ## 🤝 Contributing
 
-* Issues and PRs are welcome and encouraged!
+* Feel free to open a PR!
 
 * Bug reports: please open an issue with a minimal repro (env, dep versions, code snippet, expected vs. actual, traceback, etc.)
-
-* Feature requests: please open an issue with use-case and proposed feature.
-
-* PRs: Add tests for new stuff or when behavior changes. Also, don't forget to run formatters and tests before submitting!
