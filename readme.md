@@ -1,6 +1,6 @@
 # Wav2Aug: A Drop-In Speech Augmentation Policy
 
-A minimalistic PyTorch-based augmentation library for speech augmentation. The goal of this library is to provide a general purpose speech augmentation policy that can be used on any task and perform reasonably well without having to tune augmentation hyperparameters. Just install, and start augmenting. Applies two random augmentations per call. Just install and start augmenting!
+A minimalistic PyTorch-based augmentation library for speech augmentation. The goal of this library is to provide a drop-in speech augmentation policy that can be used on any task and perform reasonably well without having to tune augmentation hyperparameters. Just install, and start augmenting. Applies two random augmentations per call. Just install and start augmenting!
 
 Our experiments show that Wav2Aug performs comparably to SpecAugment on ASR and better on average across the evaluated non-ASR tasks. See our [paper](https://arxiv.org/abs/2610.38656) for details.
 
