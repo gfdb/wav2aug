@@ -21,7 +21,7 @@ class Wav2Aug:
         self,
         sample_rate: int,
         noise_dir: str | None = None,
-        top_k: int = 9,
+        top_k: int = 6,
         noise_dtype: torch.dtype = torch.float32,
     ) -> None:
         """Initialize Wav2Aug.
@@ -31,7 +31,7 @@ class Wav2Aug:
             noise_dir: Directory containing noise files. If None, will use the
                 default cached noise pack (auto-downloaded if needed).
             top_k: Number of top augmentations to use, ordered by effectiveness.
-                Default is 9 (all augmentations). Common values: 3, 6, or 9.
+                Default is 6. Set to 9 to use all augmentations.
                 Order (best to worst): Noise Addition, Freq Drop, Time Drop,
                 Speed Perturb, Amp Clip, Chunk Swap, Babble Noise, Amp Scale,
                 Polarity Inversion.
@@ -40,6 +40,9 @@ class Wav2Aug:
         """
         self.sample_rate = int(sample_rate)
         self.noise_dtype = noise_dtype
+
+        if top_k < 1 or top_k > 9:
+            raise ValueError(f"top_k must be between 1 and 9, got {top_k}")
 
         # Initialize noise loader
         if noise_dir is None:
@@ -70,9 +73,6 @@ class Wav2Aug:
             lambda x, lengths: invert_polarity(x),
         ]
 
-        if top_k < 1 or top_k > len(all_ops):
-            raise ValueError(f"top_k must be between 1 and {len(all_ops)}, got {top_k}")
-
         self._base_ops = all_ops[:top_k]
 
     @torch.no_grad()
@@ -81,7 +81,11 @@ class Wav2Aug:
         waveforms: torch.Tensor,
         lengths: torch.Tensor | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-        """Applies two distinct augmentations to the input batch.
+        """Apply augmentations sampled with replacement to the input batch.
+
+        The same operation may be selected twice, with its random parameters
+        sampled independently on each application. A one-operation pool is
+        applied once.
 
         Args:
             waveforms (torch.Tensor): The input waveforms. Shape [batch, time].

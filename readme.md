@@ -1,11 +1,28 @@
-# 🎛️ Wav2Aug: Task-Agnostic Waveform Augmentation Beyond ASR
+# Wav2Aug: A Drop-In Speech Augmentation Policy
 
-A minimalistic PyTorch-based audio augmentation library for speech augmentation. The goal of this library is to provide a general purpose speech augmentation policy that can be used on any task and perform reasonably well without having to tune augmentation hyperparameters. Just install, and start augmenting. Applies two random augmentations per call. Just install and start augmenting!
+A minimalistic PyTorch-based augmentation library for speech augmentation. The goal of this library is to provide a general purpose speech augmentation policy that can be used on any task and perform reasonably well without having to tune augmentation hyperparameters. Just install, and start augmenting. Applies two random augmentations per call. Just install and start augmenting!
 
+Our experiments show that Wav2Aug performs comparably to SpecAugment on ASR and better on average across the evaluated non-ASR tasks. See our [paper](https://arxiv.org/abs/2610.38656) for details.
 
 ![Diagram](https://raw.githubusercontent.com/gfdb/wav2aug/main/wav2aug.png)
 
-## 📦 Installation
+## Installation
+
+Requires Python 3.10+ and FFmpeg shared libraries for TorchCodec audio decoding.
+Install FFmpeg before running the quick start:
+
+```bash
+# macOS (Homebrew)
+brew install ffmpeg
+
+# Ubuntu / Debian
+sudo apt-get update && sudo apt-get install -y ffmpeg
+```
+
+For Windows and other platforms, follow the
+[TorchCodec installation instructions](https://github.com/meta-pytorch/torchcodec#installing-torchcodec).
+If installing into an existing PyTorch environment, check TorchCodec's compatibility
+table for your PyTorch version.
 
 ### pip
 
@@ -19,7 +36,7 @@ pip install wav2aug
 uv add wav2aug
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ```python
 import torch
@@ -41,21 +58,35 @@ aug_wavs = augmenter(wavs)
 
 That's it!
 
-## 🧪 Augmentation Types
+By default, each call samples two augmentations with replacement from the top six
+(`top_k=6`) and applies them sequentially. The same operation can be selected twice,
+with random parameters sampled independently for each application. Set `top_k=9`
+to sample from all nine augmentations, or `top_k=1` to apply noise addition once.
 
-* 🔊 **Amplitude Scaling/Clipping**: Random gain and peak limiting
-* 🌫️ **Noise Addition**: Environmental noise with SNR control
-* 📶 **Frequency Dropout**: Spectral masking with random notch filters
-* 🔄 **Polarity Inversion**: Random phase flip
-* 🧩 **Chunk Swapping**: Temporal segment reordering
-* ⏱️ **Speed Perturbation**: Time-scale modification
-* 🕳️ **Time Dropout**: Random silence insertion
-* 👥 **Babble Noise**: Multi-speaker background (auto-enabled with sufficient buffer)
+The first initialization downloads a roughly 569 MB noise archive from Hugging Face
+and preloads the decoded audio into RAM. Later initializations reuse the downloaded
+files. Set `WAV2AUG_DATA_DIR` before importing wav2aug to change the cache location
+(default: `~/.cache/wav2aug`), or supply your own audio directory to avoid downloading:
+
+```python
+augmenter = Wav2Aug(sample_rate=16000, noise_dir="/path/to/noise")
+```
+
+## Augmentation Types
+
+* **Amplitude Scaling/Clipping**: Random gain and peak limiting
+* **Noise Addition**: Environmental noise with SNR control
+* **Frequency Dropout**: Spectral masking with random notch filters
+* **Polarity Inversion**: Random phase flip
+* **Chunk Swapping**: Temporal segment reordering
+* **Speed Perturbation**: Time-scale modification
+* **Time Dropout**: Random silence insertion
+* **Babble Noise**: Multi-speaker background (auto-enabled with sufficient buffer)
 
 **Randomness**: all stochastic ops use PyTorch RNGs. Set a single seed and be done, e.g. torch.manual_seed(0); torch.cuda.manual_seed_all(0)
 
 
-## 🛠️ Development Installation
+## Development Installation
 
 ### uv
 
@@ -93,7 +124,7 @@ python -m pip install .
 python -m pip install -e '.[dev,test]'
 ```
 
-## ✅ Tests
+## Tests
 
 ### uv
 
@@ -107,12 +138,8 @@ uv run pytest -q tests/
 pytest -q tests/
 ```
 
-## 🤝 Contributing
+## Contributing
 
-* Issues and PRs are welcome and encouraged!
+* Feel free to open a PR!
 
 * Bug reports: please open an issue with a minimal repro (env, dep versions, code snippet, expected vs. actual, traceback, etc.)
-
-* Feature requests: please open an issue with use-case and proposed feature.
-
-* PRs: Add tests for new stuff or when behavior changes. Also, don't forget to run formatters and tests before submitting!

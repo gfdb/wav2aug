@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -15,6 +17,11 @@ from wav2aug.gpu import (
 )
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
+
+@pytest.fixture
+def noise_dir():
+    return str(Path(__file__).parent)
 
 
 def _waveforms(
@@ -125,13 +132,8 @@ def test_time_dropout_zeroes_segments():
     assert torch.all(zeros_per_row >= 2)
 
 
-def test_wav2aug_runs_with_stubbed_noise(monkeypatch):
-    def _noop_add_noise(waveforms, loader, **kwargs):
-        return waveforms
-
-    monkeypatch.setattr("wav2aug.gpu.wav2aug.add_noise", _noop_add_noise)
-
-    aug = Wav2Aug(sample_rate=16_000)
+def test_wav2aug_runs_with_local_noise(noise_dir):
+    aug = Wav2Aug(sample_rate=16_000, noise_dir=noise_dir)
     waveforms = _waveforms(batch=3, time=256)
     lengths = torch.ones(3, device=DEVICE, dtype=torch.float32)
     out_wave, out_lengths = aug(waveforms, lengths=lengths)
@@ -139,29 +141,33 @@ def test_wav2aug_runs_with_stubbed_noise(monkeypatch):
     assert out_lengths.data_ptr() == lengths.data_ptr()
 
 
-def test_wav2aug_top_k_limits_ops(monkeypatch):
+def test_wav2aug_top_k_limits_ops(noise_dir):
     """Test that top_k limits the number of augmentations used."""
 
-    def _noop_add_noise(waveforms, loader, **kwargs):
-        return waveforms
-
-    monkeypatch.setattr("wav2aug.gpu.wav2aug.add_noise", _noop_add_noise)
-
     # top_k=3 should only include: noise, freq_drop, time_dropout
-    aug = Wav2Aug(sample_rate=16_000, top_k=3)
+    aug = Wav2Aug(sample_rate=16_000, noise_dir=noise_dir, top_k=3)
     assert len(aug._base_ops) == 3
 
     # top_k=6 should include: noise, freq_drop, time_dropout, speed_perturb, amp_clip, chunk_swap
-    aug = Wav2Aug(sample_rate=16_000, top_k=6)
+    aug = Wav2Aug(sample_rate=16_000, noise_dir=noise_dir, top_k=6)
     assert len(aug._base_ops) == 6
 
-    # no pass should include all 9
-    aug = Wav2Aug(sample_rate=16_000)
+    # The default uses the six-operation policy.
+    aug = Wav2Aug(sample_rate=16_000, noise_dir=noise_dir)
+    assert len(aug._base_ops) == 6
+
+    # All nine operations remain available explicitly.
+    aug = Wav2Aug(sample_rate=16_000, noise_dir=noise_dir, top_k=9)
     assert len(aug._base_ops) == 9
 
 
-def test_wav2aug_top_k_invalid_raises():
-    """Test that invalid top_k values raise ValueError."""
+def test_wav2aug_top_k_invalid_raises(monkeypatch):
+    """Invalid options should fail before downloading or loading any audio."""
+
+    def unexpected_download(*args):
+        pytest.fail("Invalid top_k triggered a download")
+
+    monkeypatch.setattr("wav2aug.data.fetch.ensure_pack", unexpected_download)
     with pytest.raises(ValueError, match="top_k must be between 1 and 9"):
         Wav2Aug(sample_rate=16_000, top_k=0)
 
@@ -169,20 +175,45 @@ def test_wav2aug_top_k_invalid_raises():
         Wav2Aug(sample_rate=16_000, top_k=10)
 
 
-def test_wav2aug_noise_dtype(monkeypatch):
+def test_wav2aug_noise_dtype(noise_dir):
     """Test that noise_dtype is passed to NoiseLoader."""
 
-    def _noop_add_noise(waveforms, loader, **kwargs):
-        return waveforms
-
-    monkeypatch.setattr("wav2aug.gpu.wav2aug.add_noise", _noop_add_noise)
-
     # Default should be float32
-    aug = Wav2Aug(sample_rate=16_000)
+    aug = Wav2Aug(sample_rate=16_000, noise_dir=noise_dir)
     assert aug.noise_dtype == torch.float32
     assert aug._noise_loader.storage_dtype == torch.float32
 
     # Custom dtype should be passed through
-    aug = Wav2Aug(sample_rate=16_000, noise_dtype=torch.float16)
+    aug = Wav2Aug(sample_rate=16_000, noise_dir=noise_dir, noise_dtype=torch.float16)
     assert aug.noise_dtype == torch.float16
     assert aug._noise_loader.storage_dtype == torch.float16
+
+
+@pytest.mark.parametrize("top_k", [1, 2, 3, 6, 9])
+def test_wav2aug_repeated_operation_resamples_parameters(noise_dir, top_k, monkeypatch):
+    aug = Wav2Aug(sample_rate=16_000, noise_dir=noise_dir, top_k=top_k)
+    calls = []
+    parameters = []
+
+    def repeated_indices(low, high, size, device):
+        return torch.zeros(size, dtype=torch.long, device=device)
+
+    monkeypatch.setattr(torch, "randint", repeated_indices)
+
+    def record(index):
+        def operation(waveforms, lengths):
+            calls.append(index)
+            parameter = torch.rand((), device=waveforms.device)
+            parameters.append(parameter)
+            return waveforms + parameter
+
+        return operation
+
+    aug._base_ops = [record(i) for i in range(top_k)]
+    torch.manual_seed(0)
+    waveforms = torch.ones(2, 160, device=DEVICE)
+    out = aug(waveforms)
+    assert calls == [0] * min(2, top_k)
+    if top_k > 1:
+        assert parameters[0].item() != parameters[1].item()
+    assert torch.allclose(out, waveforms + sum(parameters))
