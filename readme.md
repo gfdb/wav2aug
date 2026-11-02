@@ -2,10 +2,11 @@
 
 A minimalistic PyTorch-based augmentation library for speech augmentation. The goal of this library is to provide a general purpose speech augmentation policy that can be used on any task and perform reasonably well without having to tune augmentation hyperparameters. Just install, and start augmenting. Applies two random augmentations per call. Just install and start augmenting!
 
+Our experiments show that Wav2Aug performs comparably to SpecAugment on ASR and better on average across the evaluated non-ASR tasks. See our [paper](https://arxiv.org/abs/2610.38656) for details.
 
 ![Diagram](https://raw.githubusercontent.com/gfdb/wav2aug/main/wav2aug.png)
 
-## 📦 Installation
+## Installation
 
 Requires Python 3.10+ and FFmpeg shared libraries for TorchCodec audio decoding.
 Install FFmpeg before running the quick start:
@@ -35,7 +36,7 @@ pip install wav2aug
 uv add wav2aug
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ```python
 import torch
@@ -69,21 +70,21 @@ files. Set `WAV2AUG_DATA_DIR` before importing wav2aug to change the cache locat
 augmenter = Wav2Aug(sample_rate=16000, noise_dir="/path/to/noise")
 ```
 
-## 🧪 Augmentation Types
+## Augmentation Types
 
-* 🔊 **Amplitude Scaling/Clipping**: Random gain and peak limiting
-* 🌫️ **Noise Addition**: Environmental noise with SNR control
-* 📶 **Frequency Dropout**: Spectral masking with random notch filters
-* 🔄 **Polarity Inversion**: Random phase flip
-* 🧩 **Chunk Swapping**: Temporal segment reordering
-* ⏱️ **Speed Perturbation**: Time-scale modification
-* 🕳️ **Time Dropout**: Random silence insertion
-* 👥 **Babble Noise**: Multi-speaker background (auto-enabled with sufficient buffer)
+* **Amplitude Scaling/Clipping**: Random gain and peak limiting
+* **Noise Addition**: Environmental noise with SNR control
+* **Frequency Dropout**: Spectral masking with random notch filters
+* **Polarity Inversion**: Random phase flip
+* **Chunk Swapping**: Temporal segment reordering
+* **Speed Perturbation**: Time-scale modification
+* **Time Dropout**: Random silence insertion
+* **Babble Noise**: Multi-speaker background (auto-enabled with sufficient buffer)
 
 **Randomness**: all stochastic ops use PyTorch RNGs. Set a single seed and be done, e.g. torch.manual_seed(0); torch.cuda.manual_seed_all(0)
 
 
-## 🛠️ Development Installation
+## Development Installation
 
 ### uv
 
@@ -121,7 +122,7 @@ python -m pip install .
 python -m pip install -e '.[dev,test]'
 ```
 
-## ✅ Tests
+## Tests
 
 ### uv
 
@@ -135,7 +136,7 @@ uv run pytest -q tests/
 pytest -q tests/
 ```
 
-## 🤝 Contributing
+## Contributing
 
 * Feel free to open a PR!
 
