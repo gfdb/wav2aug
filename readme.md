@@ -58,8 +58,10 @@ aug_wavs = augmenter(wavs)
 
 That's it!
 
-By default, each call samples two distinct augmentations from the top six
-(`top_k=6`). Set `top_k=9` to sample from all nine augmentations.
+By default, each call samples two augmentations with replacement from the top six
+(`top_k=6`) and applies them sequentially. The same operation can be selected twice,
+with random parameters sampled independently for each application. Set `top_k=9`
+to sample from all nine augmentations, or `top_k=1` to apply noise addition once.
 
 The first initialization downloads a roughly 569 MB noise archive from Hugging Face
 and preloads the decoded audio into RAM. Later initializations reuse the downloaded

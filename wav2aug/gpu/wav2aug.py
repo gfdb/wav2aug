@@ -81,7 +81,11 @@ class Wav2Aug:
         waveforms: torch.Tensor,
         lengths: torch.Tensor | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
-        """Applies two distinct augmentations to the input batch.
+        """Apply augmentations sampled with replacement to the input batch.
+
+        The same operation may be selected twice, with its random parameters
+        sampled independently on each application. A one-operation pool is
+        applied once.
 
         Args:
             waveforms (torch.Tensor): The input waveforms. Shape [batch, time].
@@ -108,9 +112,12 @@ class Wav2Aug:
                 raise AssertionError("lengths tensor must share device with waveforms")
 
         take = min(2, len(self._base_ops))
-        indices = torch.randperm(len(self._base_ops), device=waveforms.device)[
-            :take
-        ].tolist()
+        indices = torch.randint(
+            low=0,
+            high=len(self._base_ops),
+            size=(take,),
+            device=waveforms.device,
+        ).tolist()
         for idx in indices:
             op = self._base_ops[idx]
             waveforms = op(waveforms, lengths)

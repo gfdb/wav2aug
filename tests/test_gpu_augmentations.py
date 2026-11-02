@@ -190,21 +190,30 @@ def test_wav2aug_noise_dtype(noise_dir):
 
 
 @pytest.mark.parametrize("top_k", [1, 2, 3, 6, 9])
-def test_wav2aug_selects_distinct_operations(noise_dir, top_k):
+def test_wav2aug_repeated_operation_resamples_parameters(noise_dir, top_k, monkeypatch):
     aug = Wav2Aug(sample_rate=16_000, noise_dir=noise_dir, top_k=top_k)
     calls = []
+    parameters = []
+
+    def repeated_indices(low, high, size, device):
+        return torch.zeros(size, dtype=torch.long, device=device)
+
+    monkeypatch.setattr(torch, "randint", repeated_indices)
 
     def record(index):
         def operation(waveforms, lengths):
             calls.append(index)
-            return waveforms
+            parameter = torch.rand((), device=waveforms.device)
+            parameters.append(parameter)
+            return waveforms + parameter
 
         return operation
 
     aug._base_ops = [record(i) for i in range(top_k)]
-    for seed in range(30):
-        torch.manual_seed(seed)
-        calls.clear()
-        aug(torch.ones(2, 160, device=DEVICE))
-        assert len(calls) == min(2, top_k)
-        assert len(set(calls)) == len(calls)
+    torch.manual_seed(0)
+    waveforms = torch.ones(2, 160, device=DEVICE)
+    out = aug(waveforms)
+    assert calls == [0] * min(2, top_k)
+    if top_k > 1:
+        assert parameters[0].item() != parameters[1].item()
+    assert torch.allclose(out, waveforms + sum(parameters))
